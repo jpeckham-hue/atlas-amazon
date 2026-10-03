@@ -9,10 +9,16 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.1 scaffold.** The local domain core is in place: models, recipe
-> loading, keyword normalization and coverage, backend keyword packing, and
-> listing audit primitives. There are no live provider integrations, no LLM
-> calls and no publishing yet.
+> Status: **v0.2: offline foundation.** In place:
+> * recipe loading, with rules sourced to official Amazon and KDP pages;
+> * keyword normalization, coverage and decomposable scoring;
+> * backend keyword packing and the listing audit;
+> * an append-only, checksummed evidence store;
+> * provider Protocols with fixture-backed fakes;
+> * evidence-linked proposals that are only valid after passing the audit.
+>
+> Everything is deterministic and offline. There are no live providers, no
+> LLM calls, no CLI and no publishing yet.
 
 ## Principles
 
@@ -100,7 +106,69 @@ packed = pack_backend_bytes(
 print(packed.text, packed.byte_count, [(e.term, e.reason.value) for e in packed.excluded])
 ```
 
+### Evidence, scoring and proposals (v0.2, offline)
+
+```python
+from atlas_amazon.evidence import JsonlEvidenceStore
+from atlas_amazon.keywords.scoring import (
+    SignalValue,
+    KeywordSignals,
+    log_scaled_signal,
+    score_keyword,
+)
+from atlas_amazon.planner import Proposal, validate_proposal
+from atlas_amazon.providers import FixtureData, FixtureKeywordDataProvider
+
+fixture = FixtureData.load("tests/fixtures/sample_us.json")
+store = JsonlEvidenceStore("var/evidence.jsonl")  # append-only, checksummed
+metrics = FixtureKeywordDataProvider(fixture).keyword_metrics(
+    ["insulated water bottle"], marketplace="US", run_id="demo"
+)
+store.append_many(m for m in metrics if m.id not in store)
+[metric] = metrics
+
+signals = KeywordSignals(
+    keyword="insulated water bottle",
+    relevance=SignalValue(0.9),  # no evidence: shows up as a heuristic signal
+    demand=log_scaled_signal(metric.payload["search_volume"], 120000, [metric.id]),
+    competition=SignalValue(metric.payload["competition"], (metric.id,)),
+    intent=SignalValue(0.7),
+    competitor_coverage=SignalValue(0.5),
+)
+result = score_keyword(signals, recipe.keyword_weights)
+for c in result.contributions:
+    print(
+        f"{c.signal:20} {c.weight:.2f} x {c.normalized_value:.3f} = {c.contribution:.3f}",
+        c.evidence_ids,
+    )
+print("score", round(result.score, 3), "heuristic:", result.heuristic_signals)
+
+proposal = Proposal.create(
+    recipe=recipe,
+    target_field="title",
+    value="Acme Insulated Water Bottle, 32 oz",
+    rationale="Adds 'insulated water bottle' (40k searches/month in fixture data).",
+    evidence_ids=[metric.id],
+    created_at=metric.retrieved_at,
+)
+check = validate_proposal(proposal, recipe=recipe, base=listing, evidence=store)
+print("valid:", check.valid, [f.rule_id for f in check.blocking_findings])
+```
+
 ## Layout
 
-See [docs/architecture.md](docs/architecture.md) for the full architecture,
-the planned file tree and the roadmap.
+```
+src/atlas_amazon/
+  models.py  jsonvalue.py
+  recipes/    TOML recipes, loader, schema
+  keywords/   normalize, coverage, scoring
+  backend/    hidden-keyword packing
+  audit/      deterministic listing audit
+  evidence/   identity, serialization, store Protocol, JSONL store
+  providers/  Catalog/KeywordData/Suggestion/Review Protocols + fixture fakes
+  planner/    Proposal + validate_proposal
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full architecture
+and roadmap, and [docs/rule-sources.md](docs/rule-sources.md) for rule
+provenance.

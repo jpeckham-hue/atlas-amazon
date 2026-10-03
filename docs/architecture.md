@@ -25,15 +25,15 @@ atlas-amazon should:
  input  ──▶ │ ProductInput (metadata, ASIN?, competitor ASINs, recipe_id)   │
             └───────────────┬───────────────────────────────────────────────┘
                             ▼
- providers  SP-API · keyword/market data (e.g. Nexscope) · autocomplete · reviews
- (planned)  each implements a narrow Protocol and returns Evidence records
+ providers  Catalog · KeywordData · Suggestion · Review Protocols (v0.2: fixture
+            fakes only; live SP-API / keyword vendor / autocomplete later)
                             ▼
- evidence   Evidence(id, kind, provider, marketplace, retrieved_at, payload, url)
-            append-only store; recommendations reference evidence ids
+ evidence   Evidence(id, kind, provider, marketplace, retrieved_at, payload,
+            source_url, subject, run_id); append-only, checksummed JSONL store
                             ▼
- domain     recipes ─▶ keyword engine ─▶ coverage ─▶ audit ─▶ planner
- (pure)     all deterministic and side-effect free; v0.1 implements the
-            parts marked ✓ in the file tree below
+ domain     recipes ─▶ keyword scoring ─▶ coverage ─▶ audit ─▶ proposals
+ (pure)     all deterministic and side-effect free; a proposal is valid only
+            after it passes the audit and its evidence resolves
                             ▼
  semantic   LLM steps (relevance judgments, review themes, drafting copy)
  (planned)  every output goes back through deterministic validation
@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists in v0.1, `·` = planned.
+`✓` = exists (v0.2), `·` = planned.
 
 ```
 atlas-amazon/
@@ -61,7 +61,9 @@ atlas-amazon/
 │   ├── architecture.md            ✓ this file
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
 ├── src/atlas_amazon/
-│   ├── models.py                  ✓ ProductInput, Listing, Evidence, SourceRef, Finding, AuditReport
+│   ├── models.py                  ✓ ProductInput, Listing, Evidence, EvidenceKind, SourceRef,
+│   │                                Finding, AuditReport
+│   ├── jsonvalue.py               ✓ JSON-only deep freeze/thaw, canonical JSON
 │   ├── recipes/
 │   │   ├── schema.py              ✓ Recipe, FieldSpec, RuleSpec, BackendSpec, KNOWN_CHECKS
 │   │   ├── loader.py              ✓ TOML load, `extends` merge, strict validation
@@ -72,21 +74,28 @@ atlas-amazon/
 │   ├── keywords/
 │   │   ├── normalize.py           ✓ normalize_text, tokenize, fold_plural, keyword_key, dedupe
 │   │   ├── coverage.py            ✓ exact/token/placement coverage
-│   │   └── scoring.py             · decomposable keyword score (see Scoring)
+│   │   └── scoring.py             ✓ decomposable keyword score, ranking, signal transforms
 │   ├── backend/
 │   │   └── packing.py             ✓ byte-budget and slot packing with exclusion reasons
 │   ├── audit/
 │   │   └── listing.py             ✓ field limits, required fields, rule checks registry
-│   ├── evidence/                  · store interface + local JSONL/SQLite implementation
-│   ├── providers/                 · Protocols + fixtures-backed fakes, then live adapters
-│   │   ├── base.py                ·   KeywordDataProvider, CatalogProvider, ReviewProvider, ...
+│   ├── evidence/
+│   │   ├── identity.py            ✓ content-addressed evidence IDs, make_evidence
+│   │   ├── serialize.py           ✓ checksummed JSON records
+│   │   ├── store.py               ✓ EvidenceStore Protocol, errors, InMemoryEvidenceStore
+│   │   └── jsonl.py               ✓ append-only JsonlEvidenceStore
+│   ├── providers/
+│   │   ├── base.py                ✓ Catalog/KeywordData/Suggestion/Review Protocols
+│   │   ├── fixtures.py            ✓ fixture-backed fakes
 │   │   ├── sp_api.py              ·
 │   │   ├── autocomplete.py        ·
 │   │   └── nexscope.py            ·
-│   ├── planner/                   · proposal model (field, value, evidence_ids, rationale)
+│   ├── planner/
+│   │   └── proposal.py            ✓ Proposal, ProposalBasis, validate_proposal
+│   ├── research/                  · v0.3 offline research run + review report
 │   ├── llm/                       · prompt contracts; outputs re-validated
 │   └── review/                    · approval records; publish is gated on approval
-└── tests/                         ✓ one module per domain module
+└── tests/                         ✓ one module per domain module; fixtures/ for fakes
 ```
 
 ## Domain model
@@ -95,7 +104,7 @@ atlas-amazon/
 |---|---|
 | `ProductInput` | User-supplied metadata, recipe id, marketplace, optional ASIN and competitor ASINs (validated format, no self-competition). |
 | `Listing` | Recipe-agnostic `field -> str \| tuple[str]` map. The recipe decides what the fields mean. |
-| `Evidence` | One observed fact. `retrieved_at` must be timezone-aware. The payload is frozen. |
+| `Evidence` | One observed fact: provider, marketplace, timezone-aware `retrieved_at`, `source_url`, `subject`, `run_id`, and a JSON-only, deeply frozen payload. See [Evidence store](#evidence-store-v02). |
 | `SourceRef` | Provenance for a *rule*: title, `as_of` date, status (`verified` / `unverified` / `heuristic`), URL, marketplace, scope, note, and `see_also` (non-authoritative references kept apart from `url`). |
 | `Finding` | An audit result with rule id, severity, observed value, limit and the rule's `SourceRef`. |
 | `AuditReport` | Findings plus `passed` (no errors). Warnings and info don't fail an audit. |
@@ -152,7 +161,7 @@ Full rule-by-rule status, with links, is in [rule-sources.md](rule-sources.md).
 URL. It also requires every limit to be either pinned as verified or
 explicitly listed as knowingly unverified.
 
-## Deterministic utilities (v0.1)
+## Deterministic utilities
 
 ### Normalization
 
@@ -211,52 +220,151 @@ means over the deduplicated keywords. Every per-keyword value is kept.
 
 A test asserts that `CHECKS` and `KNOWN_CHECKS` stay in sync.
 
-## Scoring
+## Scoring (v0.2)
 
-No score in atlas-amazon is a black box. The keyword score (planned for
-`keywords/scoring.py`) is:
+`keywords/scoring.py`. No score in atlas-amazon is a black box:
 
 ```
-score(k) = Σ_s  w_s · x_s(k)        s ∈ {relevance, demand, competition′, intent, competitor_coverage}
+score(k) = Σ_s  w_s · x_s(k)        s ∈ KEYWORD_SIGNALS
+x_s = raw_s                          for relevance, demand, intent, competitor_coverage
+x_competition = 1 − raw_competition  (supplied as "how competitive", scored inverted)
 ```
 
-* Each `x_s ∈ [0, 1]` comes from a documented transform of evidence. For
-  example, demand might be `log1p(volume) / log1p(max volume in the candidate
-  set)`, and `competition′ = 1 − competition`.
-* The `w_s` come from the recipe and sum to 1.
-* The result keeps each `w_s · x_s` contribution and the evidence ids behind
-  each `x_s`.
-* Where a signal comes from an LLM (relevance, intent), its value is recorded
-  as evidence too (model, prompt version, timestamp), so it can be audited
-  and reproduced.
+* **Inputs.** A `KeywordSignals` holds five `SignalValue(value ∈ [0, 1],
+  evidence_ids)`. Values outside [0, 1], NaN or infinity are rejected,
+  and there is no default for a missing signal: the caller must choose one
+  explicitly.
+* **Weights.** The recipe's `[scoring.keyword]`, re-validated at scoring
+  time: exactly the five signals, finite, non-negative, summing to 1. That
+  means `score ∈ [0, 1]`.
+* **Output.** `KeywordScore` holds the score plus one `SignalContribution`
+  per signal: raw value, normalized value, `inverted` flag, weight,
+  contribution (`weight × normalized`) and evidence IDs. `score` is exactly
+  `math.fsum` of the contributions. A signal with no evidence IDs is still
+  scored, but it is listed in `heuristic_signals`.
+* **Ranking.** `rank_keywords` sorts by descending score, breaking ties on
+  the plural-folded keyword key. It rejects candidates that fold to the same
+  key (e.g. "water bottle" and "Water Bottles").
+* **Documented transforms** from raw evidence to signals:
+  * `log_scaled_signal(v, ceiling) = log1p(v) / log1p(ceiling)`, clamped.
+    Used for search volume, with the ceiling set to the candidate-set
+    maximum.
+  * `linear_signal(v, low, high)`, clamped.
+  * `competitor_coverage_signal(k, [(evidence_id, Listing)])` = the share
+    of competitor listings with *k*'s exact phrase in any one segment. It
+    is backed by **all** examined competitors' evidence, because the
+    denominator depends on every one of them.
+* LLM-derived signals (relevance, intent; v0.4+) will be recorded as
+  Evidence (model, prompt version, timestamp) and cited like any other
+  signal.
 
-## Providers (planned)
+## Evidence store (v0.2)
 
-Each provider implements a narrow `typing.Protocol` and returns `Evidence`:
+`evidence/`. Evidence is the record of *what was observed*. It is append-only
+and tamper-evident.
 
-| Protocol | Candidates | Evidence kinds |
-|---|---|---|
-| `CatalogProvider` | Amazon SP-API (Catalog Items, Listings Items) | `catalog_item`, `competitor_listing` |
-| `KeywordDataProvider` | Nexscope or similar | `keyword_metric` |
-| `SuggestionProvider` | Amazon autocomplete | `autocomplete_suggestion` |
-| `ReviewProvider` | Review data vendors | `review_sample`, `review_theme` |
-| `ListingWriter` | SP-API Listings Items (patch) | Only callable with an approval record |
+* **Model.** `Evidence(id, kind, provider, marketplace, retrieved_at,
+  payload, source_url, subject, run_id)`. `retrieved_at` must be
+  timezone-aware. `payload` must be JSON-compatible (no NaN or infinity,
+  string keys only) and is deeply frozen (read-only mappings, tuples).
+  `subject` is what the fact is about (an ASIN, keyword or seed), and
+  `run_id` groups one research run.
+* **Identity.** `make_evidence` derives a content-addressed ID:
+  `ev_` + SHA-256 (truncated to 96 bits) of the canonical JSON of
+  provider, kind, marketplace, subject, run and payload. The retrieval
+  time is deliberately left out, so re-observing the same fact within one
+  run collides with the existing record instead of double-counting it.
+* **Protocol.** `EvidenceStore` defines `append`, `append_many`
+  (all-or-nothing), `get`, `in`, `len`, `iter` and
+  `query(run_id, subject, kind, provider, marketplace)`. Filters are ANDed
+  and results keep insertion order. There is no update or delete.
+* **`InMemoryEvidenceStore`** has the same contract, for tests.
+* **`JsonlEvidenceStore`** writes one canonical-JSON line per record:
+  `{"evidence": {...}, "sha256": "...", "v": 1}`.
+  * The file is opened only in append mode. A batch is validated in full
+    (types, duplicates against the store and within the batch) before any
+    write, then written in one call and fsynced.
+  * On open, every line is verified. Invalid JSON, a checksum mismatch, a
+    wrong version or key set, a truncated last line, a blank line or a
+    duplicate ID raises `CorruptEvidenceError(path, line, reason)`. Nothing
+    is skipped.
+  * `verify()` re-reads the file and confirms it matches the store's
+    records exactly, which catches appends, replacements and deletions by
+    other processes.
+  * It is single-writer: there is no cross-process locking (documented
+    limitation).
 
-Each provider ships with a fixtures-backed fake first. Live adapters come
-later, behind configuration, with rate limiting and raw-response capture.
+## Providers (v0.2: protocols and fakes only)
+
+`providers/`. Each provider implements one narrow, `runtime_checkable`
+Protocol and returns `list[Evidence]`, never raw dicts:
+
+| Protocol | Method | Evidence kind | Future live adapter |
+|---|---|---|---|
+| `CatalogProvider` | `get_items(asins, *, marketplace, run_id)` | `catalog_item` | SP-API Catalog/Listings Items |
+| `KeywordDataProvider` | `keyword_metrics(keywords, *, marketplace, run_id)` | `keyword_metric` | Nexscope or similar |
+| `SuggestionProvider` | `suggestions(seed, *, marketplace, run_id)` | `autocomplete_suggestion` | Amazon autocomplete |
+| `ReviewProvider` | `reviews(asin, *, marketplace, run_id, limit)` | `review_sample` (one per review) | review data vendors |
+
+Conventions: `marketplace` is always required, and `run_id` is stamped on
+every record. A provider with no data for an item returns nothing for it,
+never an invented default.
+
+**Fixture fakes** (`providers/fixtures.py`) read one JSON document with
+optional `catalog`, `keyword_metrics`, `suggestions` and `reviews` sections,
+keyed by marketplace. They are deterministic: a fixed `retrieved_at` from
+the fixture, content-addressed IDs, and `fixture://<file>#<section>/<mkt>/<key>`
+source URLs. Keyword and seed lookups use normalized text. Fixture shape
+errors raise `FixtureError`.
+
+A future `ListingWriter` (SP-API Listings patch) will only be callable
+with an approval record.
+
+## Proposals (v0.2)
+
+`planner/proposal.py`. A `Proposal` is one suggested value for one field:
+`id`, `recipe_id`, `recipe_version`, `target_field`, `value`, `rationale`,
+`evidence_ids`, `basis` and `created_at` (timezone-aware).
+
+* **Evidence or explicitly heuristic.** With no evidence IDs, the basis
+  must be `heuristic` (`Proposal.create(..., heuristic=True)`). A heuristic
+  proposal may not cite evidence. Both rules are enforced in the
+  constructor, so `dataclasses.replace` can't get around them.
+* **Deterministic ID.** `prop_` + a hash of the content and `created_at`.
+* **No validity flag on the proposal.** Validity exists only as the result
+  of `validate_proposal(proposal, recipe=, base=, evidence=)`, which
+  returns a `ProposalValidation`:
+  1. structural `problems`: wrong recipe or recipe version, unknown field,
+     or text/list shape mismatch (the audit is skipped);
+  2. `missing_evidence`: cited IDs not in the evidence store;
+  3. the existing `audit_listing` run on `proposal.apply_to(base)`, with
+     `blocking_findings` = error findings on the target field, or from
+     cross-field rules that include it (e.g. KDP title+subtitle length).
+
+  `valid` is true only when all three are empty. Errors elsewhere in the
+  base listing appear in the full `audit` but don't block the proposal.
+  Warnings never block.
 
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
    **v0.1.1**: rule-source verification pass (2026-10-03).
-2. **v0.2**: decomposable keyword scoring, a local evidence store (JSONL or
-   SQLite), provider Protocols with fixture fakes, and a planner `Proposal`
-   model that links to evidence ids.
-3. **v0.3**: research orchestration driven by `research.priorities`, a CLI,
-   and an end-to-end offline run that ends in a human-review report.
+2. **v0.2 (this release)**: decomposable keyword scoring, the evidence
+   store Protocol plus in-memory and append-only JSONL stores, provider
+   Protocols with fixture fakes, and the Proposal model with audit-gated
+   validation.
+3. **v0.3**: offline research orchestration. A `ResearchRun` drives the
+   providers in `research.priorities` order into the evidence store, derives
+   `KeywordSignals` from stored evidence (keyword candidates from
+   suggestions and metrics, demand/competition from metrics, competitor
+   coverage from catalog evidence), ranks keywords, audits the current
+   listing, emits deterministic heuristic proposals (e.g. backend packing),
+   and writes a human-review report that links every number to evidence.
+   Fully fixture-driven and offline. The CLI waits until the run shape has
+   settled.
 4. **v0.4**: first live read-only providers (autocomplete, SP-API catalog, and
    SP-API Product Type Definitions to verify per-product-type limits for
-   bullets, description and generic keywords),
-   then LLM generation with deterministic re-validation.
+   bullets, description and generic keywords), then LLM generation and
+   relevance/intent judgments with deterministic re-validation.
 5. **Later**: an approval-gated SP-API write path, more category recipes, and
    a multi-marketplace rules matrix.

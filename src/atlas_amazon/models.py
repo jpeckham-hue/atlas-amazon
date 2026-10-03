@@ -15,6 +15,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
+from atlas_amazon.jsonvalue import freeze
+
 _ASIN = re.compile(r"^[A-Z0-9]{10}$")
 
 
@@ -54,9 +56,24 @@ class SourceRef:
     see_also: tuple[str, ...] = ()
 
 
+class EvidenceKind(StrEnum):
+    """Kinds produced by the provider protocols. `Evidence.kind` is any non-empty str."""
+
+    CATALOG_ITEM = "catalog_item"
+    KEYWORD_METRIC = "keyword_metric"
+    AUTOCOMPLETE_SUGGESTION = "autocomplete_suggestion"
+    REVIEW_SAMPLE = "review_sample"
+
+
 @dataclass(frozen=True, slots=True)
 class Evidence:
-    """One observed fact from a provider, kept with where and when it came from."""
+    """One observed fact from a provider, kept with where and when it came from.
+
+    `subject` is what the fact is about (an ASIN, a keyword, a suggestion
+    seed). `run_id` groups the evidence collected for one product research
+    run. The payload is JSON-only and deeply frozen, so a record can be
+    written and read back unchanged.
+    """
 
     id: str
     kind: str
@@ -65,14 +82,21 @@ class Evidence:
     retrieved_at: datetime
     payload: Mapping[str, Any] = field(default_factory=dict)
     source_url: str | None = None
+    subject: str | None = None
+    run_id: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("id", "kind", "provider", "marketplace"):
             if not getattr(self, name):
                 raise ValueError(f"Evidence.{name} must be non-empty")
+        for name in ("subject", "run_id", "source_url"):
+            if getattr(self, name) == "":
+                raise ValueError(f"Evidence.{name} must be None or non-empty")
         if self.retrieved_at.tzinfo is None or self.retrieved_at.utcoffset() is None:
             raise ValueError("Evidence.retrieved_at must be timezone-aware")
-        object.__setattr__(self, "payload", MappingProxyType(dict(self.payload)))
+        if not isinstance(self.payload, Mapping):
+            raise TypeError("Evidence.payload must be a mapping")
+        object.__setattr__(self, "payload", freeze(self.payload, "payload"))
 
 
 @dataclass(frozen=True, slots=True)

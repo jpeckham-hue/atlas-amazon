@@ -1,0 +1,39 @@
+{
+  "provider": "fixture",
+  "retrieved_at": "2026-10-01T12:00:00+00:00",
+  "catalog": {
+    "US": {
+      "B0COMP0001": {
+        "title": "Acme Insulated Water Bottle, 32 oz",
+        "bullets": ["Leak proof lid", "Keeps drinks cold for 24 hours"],
+        "brand": "Acme"
+      },
+      "B0COMP0002": {
+        "title": "Hydra Steel Bottle for Gym and Hiking",
+        "bullets": ["Double wall vacuum insulation"],
+        "brand": "Hydra"
+      }
+    }
+  },
+  "keyword_metrics": {
+    "US": {
+      "water bottle": {"search_volume": 120000, "competition": 0.82},
+      "insulated water bottle": {"search_volume": 40000, "competition": 0.55},
+      "gym bottle": {"search_volume": 900, "competition": 0.2}
+    }
+  },
+  "suggestions": {
+    "US": {
+      "water bot": ["water bottle", "water bottle with straw", "water bottles insulated"]
+    }
+  },
+  "reviews": {
+    "US": {
+      "B0COMP0001": [
+        {"rating": 5, "text": "Stays cold all day, no leaks."},
+        {"rating": 2, "text": "Lid cracked after a month."},
+        {"rating": 4, "text": "Great for the gym; a bit heavy."}
+      ]
+    }
+  }
+}
