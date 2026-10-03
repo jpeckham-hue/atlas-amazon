@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
+from atlas_amazon.judgments.contract import JudgmentRequest
 from atlas_amazon.models import Evidence
 
 
@@ -68,4 +69,35 @@ class ReviewProvider(Protocol):
         marketplace: str,
         run_id: str | None = None,
         limit: int | None = None,
+    ) -> list[Evidence]: ...
+
+
+@runtime_checkable
+class ReviewThemeProvider(Protocol):
+    """Themes over stored review evidence. Kind: `review_theme`.
+
+    Receives the review_sample Evidence to summarize and must cite those
+    records' IDs (see `reviews.review_theme_evidence`).
+    """
+
+    name: str
+
+    def themes(
+        self, reviews: Sequence[Evidence], *, marketplace: str, run_id: str | None = None
+    ) -> list[Evidence]: ...
+
+
+@runtime_checkable
+class JudgmentProvider(Protocol):
+    """Semantic judgments (relevance, intent, entity, equivalence). Kind: `judgment`.
+
+    Returns at most one Evidence per request, built with
+    `judgments.judgment_evidence`. A request it cannot answer gets no
+    evidence, never a default.
+    """
+
+    name: str
+
+    def judge(
+        self, requests: Sequence[JudgmentRequest], *, marketplace: str, run_id: str | None = None
     ) -> list[Evidence]: ...

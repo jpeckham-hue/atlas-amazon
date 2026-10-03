@@ -4,6 +4,7 @@ import pytest
 
 from atlas_amazon.evidence import make_evidence
 from atlas_amazon.keywords.candidates import build_candidates
+from atlas_amazon.keywords.families import singleton_families
 from atlas_amazon.keywords.signals import (
     derive_signals,
     heuristic_intent,
@@ -48,7 +49,10 @@ def derive(seeds, metrics, competitors=COMPETITORS, refs=("water bottle",)):
     return {
         d.keyword: d
         for d in derive_signals(
-            candidates, metrics=metrics, competitors=competitors, reference_terms=refs
+            singleton_families(candidates),
+            metrics=metrics,
+            competitors=competitors,
+            reference_terms=refs,
         )
     }
 

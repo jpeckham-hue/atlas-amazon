@@ -1,8 +1,9 @@
 """Render a ResearchResult as a JSON-ready dict or Markdown.
 
 This layer formats, it does not decide. It computes no scores, thresholds,
-rankings or recommendations; it only copies and lays out what the domain
-produced. Every derived figure in the output keeps its evidence IDs.
+groupings, rankings or recommendations; it only copies and lays out what
+the domain produced. Every derived figure keeps its evidence IDs, and every
+relevance/intent value shows its source (judgment or heuristic).
 """
 
 from __future__ import annotations
@@ -13,6 +14,9 @@ from typing import Any
 from atlas_amazon.jsonvalue import thaw
 from atlas_amazon.models import Finding
 from atlas_amazon.research.run import ResearchResult
+from atlas_amazon.reviews.themes import ThemeInsight
+
+SOURCE_MARK = {"evidence": "", "judgment": " J", "heuristic": " H"}
 
 
 def _finding(f: Finding) -> dict[str, Any]:
@@ -36,10 +40,43 @@ def _finding(f: Finding) -> dict[str, Any]:
     }
 
 
+def _insight(i: ThemeInsight) -> dict[str, Any]:
+    t = i.theme
+    return {
+        "theme": t.theme,
+        "polarity": t.polarity.value,
+        "count": t.count,
+        "products": list(t.products),
+        "competitor_products": list(i.competitor_products),
+        "about_own_product": i.about_own_product,
+        "repeated": i.repeated,
+        "terms": list(t.terms),
+        "extractor": f"{t.extractor} {t.extractor_version}",
+        "rationale": t.rationale,
+        "theme_evidence_id": t.evidence_id,
+        "review_evidence_ids": list(t.review_evidence_ids),
+    }
+
+
+def _task(t) -> dict[str, Any]:
+    return {
+        "priority": t.priority,
+        "task": t.task,
+        "status": t.status.value,
+        "providers": list(t.providers),
+        "evidence_ids": list(t.evidence_ids),
+        "new_records": t.new_records,
+        "reused_records": t.reused_records,
+        "note": t.note,
+    }
+
+
 def report_dict(result: ResearchResult) -> dict[str, Any]:
     m = result.metadata
     ev = result.evidence
     plan = result.backend_plan
+    themes = result.review_themes
+    family_of = {f.canonical: f for f in result.families.families}
     return {
         "run": {
             "run_id": m.run_id,
@@ -63,22 +100,14 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
                 "top_n": m.config.top_n,
                 "min_competitor_support": m.config.min_competitor_support,
                 "review_limit": m.config.review_limit,
+                "keyword_families": m.config.keyword_families,
+                "min_equivalence_confidence": m.config.min_equivalence_confidence,
+                "min_theme_count": m.config.min_theme_count,
             },
             "evidence_fingerprint": m.evidence_fingerprint,
         },
-        "tasks": [
-            {
-                "priority": t.priority,
-                "task": t.task,
-                "status": t.status.value,
-                "providers": list(t.providers),
-                "evidence_ids": list(t.evidence_ids),
-                "new_records": t.new_records,
-                "reused_records": t.reused_records,
-                "note": t.note,
-            }
-            for t in result.tasks
-        ],
+        "tasks": [_task(t) for t in result.tasks],
+        "semantic_tasks": [_task(t) for t in result.semantic_tasks],
         "evidence": {
             "total": ev.total,
             "by_kind": dict(ev.by_kind),
@@ -103,16 +132,86 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             }
             for c in result.candidates
         ],
+        "families": {
+            "groups": [
+                {
+                    "id": f.id,
+                    "canonical": f.canonical,
+                    "canonical_reason": f.canonical_reason,
+                    "members": list(f.phrases),
+                    "links": [
+                        {
+                            "a": link.a,
+                            "b": link.b,
+                            "rule": link.rule.value,
+                            "detail": link.detail,
+                            "evidence_ids": list(link.evidence_ids),
+                        }
+                        for link in f.links
+                    ],
+                    "evidence_ids": list(f.evidence_ids),
+                }
+                for f in result.families.families
+                if len(f.members) > 1
+            ],
+            "unconfirmed_pairs": [
+                {"a": p.a, "b": p.b, "detail": p.detail} for p in result.families.unconfirmed
+            ],
+            "rejected_pairs": [
+                {
+                    "a": p.a,
+                    "b": p.b,
+                    "detail": p.detail,
+                    "judgment_id": p.judgment_id,
+                    "judgment_note": p.judgment_note,
+                }
+                for p in result.families.rejected
+            ],
+        },
+        "judgments": [
+            {
+                "evidence_id": j.evidence_id,
+                "type": j.type.value,
+                "subject": j.subject,
+                "result": thaw(j.result),
+                "confidence": j.confidence,
+                "model": j.model,
+                "prompt_version": j.prompt_version,
+                "input_hash": j.input_hash,
+                "judged_at": j.judged_at.isoformat(),
+                "rationale": j.rationale,
+            }
+            for j in result.judgments
+        ],
+        "invalid_judgments": [{"evidence_id": i, "reason": r} for i, r in result.invalid_judgments],
+        "entity_flags": [
+            {
+                "keyword": f.keyword,
+                "label": f.label,
+                "entity": f.entity,
+                "judgment_id": f.judgment_id,
+            }
+            for f in result.entity_flags
+        ],
         "ranked_keywords": [
             {
                 "rank": rank,
                 "keyword": s.keyword,
+                "family_id": family_of[s.keyword].id,
+                "family_members": list(family_of[s.keyword].phrases),
                 "score": s.score,
                 "heuristic_signals": list(s.heuristic_signals),
+                "judgment_signals": [
+                    name
+                    for name, src in result.derivation(s.keyword).sources.items()
+                    if src.value == "judgment"
+                ],
+                "intent_label": result.derivation(s.keyword).intent_label,
                 "evidence_ids": list(s.evidence_ids),
                 "signals": [
                     {
                         "signal": c.signal,
+                        "source": result.derivation(s.keyword).sources[c.signal].value,
                         "raw": c.raw_value,
                         "normalized": c.normalized_value,
                         "inverted": c.inverted,
@@ -130,28 +229,30 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
         "unscored_keywords": [
             {
                 "keyword": d.keyword,
+                "family_members": list(d.family.phrases),
                 "missing_signals": list(d.missing),
                 "notes": {k: d.notes[k] for k in d.missing},
-                "evidence_ids": list(d.candidate.evidence_ids),
+                "evidence_ids": list(d.family.evidence_ids),
             }
             for d in result.unscored
         ],
         "coverage": None
         if result.coverage is None
         else {
-            "exact_rate": result.coverage.exact_rate,
-            "token_rate": result.coverage.token_rate,
-            "placement_score": result.coverage.placement_score,
+            "member_exact_rate": result.coverage.exact_rate,
+            "member_token_rate": result.coverage.token_rate,
             "field_weights": dict(result.coverage.field_weights),
-            "keywords": [
+            "families": [
                 {
-                    "keyword": k.keyword,
-                    "exact_fields": list(k.exact_fields),
-                    "best_field": k.best_field,
-                    "placement": k.placement_score,
-                    "token_fraction": k.token_fraction,
+                    "keyword": fc.keyword,
+                    "members": list(fc.members),
+                    "covered": fc.covered,
+                    "exact_fields": list(fc.exact_fields),
+                    "best_field": fc.best_field,
+                    "best_member": fc.best_member,
+                    "placement": fc.placement_score,
                 }
-                for k in result.coverage.keywords
+                for fc in result.family_coverage
             ],
         },
         "backend_plan": None
@@ -162,6 +263,7 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             "used": plan.used,
             "capacity": plan.capacity,
             "packed_keywords": list(plan.packed_keywords),
+            "redundant_members": list(plan.redundant_members),
             "retained_current": list(plan.retained),
             "proposal_id": plan.proposal.id if plan.proposal else None,
             "note": plan.note,
@@ -178,6 +280,8 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             {
                 "kind": r.kind.value,
                 "keyword": r.keyword,
+                "family_members": list(r.family_members),
+                "matched_member": r.matched_member,
                 "rank": r.rank,
                 "score": r.score,
                 "current_fields": list(r.current_fields),
@@ -190,6 +294,25 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             }
             for r in result.recommendations
         ],
+        "review_themes": None
+        if themes is None
+        else {
+            "min_count": themes.min_count,
+            "positives": [_insight(i) for i in themes.positives],
+            "complaints": [_insight(i) for i in themes.complaints],
+            "other": [_insight(i) for i in themes.other],
+            "opportunities": [
+                {
+                    "theme": o.theme,
+                    "basis": o.basis,
+                    "statement": o.statement,
+                    "first_party_support": list(o.first_party_support),
+                    "evidence_ids": list(o.evidence_ids),
+                }
+                for o in themes.opportunities
+            ],
+            "invalid": [{"evidence_id": i, "reason": r} for i, r in themes.invalid],
+        },
         "proposals": [
             {
                 "id": p.id,
@@ -229,6 +352,16 @@ def _ids(ids: Any, limit: int = 4) -> str:
     return shown + (f" (+{len(ids) - limit} more)" if len(ids) > limit else "")
 
 
+def _task_rows(w, tasks) -> None:
+    w("| Priority | Task | Status | New / reused | Note |")
+    w("|---|---|---|---|---|")
+    for t in tasks:
+        w(
+            f"| {t['priority']} | {t['task'] or '-'} | {t['status']} | "
+            f"{t['new_records']} / {t['reused_records']} | {t['note']} |"
+        )
+
+
 def render_markdown(result: ResearchResult) -> str:
     d = report_dict(result)
     run, ev = d["run"], d["evidence"]
@@ -244,18 +377,13 @@ def render_markdown(result: ResearchResult) -> str:
     )
     w(f"- Seeds ({run['seeds']['source']}): {', '.join(run['seeds']['values'])}")
     w("- Providers: " + ", ".join(f"{k}={v or 'none'}" for k, v in run["providers"].items()))
+    w(f"- Keyword families: {'on' if run['config']['keyword_families'] else 'off'}")
     w(f"- Evidence fingerprint: `{run['evidence_fingerprint'][:16]}`")
     w("")
 
     w("## Research tasks")
     w("")
-    w("| Priority | Task | Status | New / reused | Note |")
-    w("|---|---|---|---|---|")
-    for t in d["tasks"]:
-        w(
-            f"| {t['priority']} | {t['task'] or '-'} | {t['status']} | "
-            f"{t['new_records']} / {t['reused_records']} | {t['note']} |"
-        )
+    _task_rows(w, d["tasks"] + d["semantic_tasks"])
     w("")
 
     w("## Evidence summary")
@@ -281,25 +409,57 @@ def render_markdown(result: ResearchResult) -> str:
         w(f"- **{f['severity']}** `{f['rule_id']}`: {f['message']}{provenance}")
     w("")
 
+    fam = d["families"]
+    w("## Keyword families")
+    w("")
+    if not fam["groups"]:
+        w("No multi-phrase families.")
+    for g in fam["groups"]:
+        w(
+            f"- **{g['canonical']}** (`{g['id']}`, canonical: {g['canonical_reason']}): "
+            + ", ".join(f"`{p}`" for p in g["members"])
+        )
+        for link in g["links"]:
+            ev_note = f" Evidence: {_ids(link['evidence_ids'])}" if link["evidence_ids"] else ""
+            w(f"  - `{link['a']}` ~ `{link['b']}` [{link['rule']}]: {link['detail']}{ev_note}")
+    for p in fam["unconfirmed_pairs"]:
+        w(f"- Unconfirmed (kept separate, no judgment): `{p['a']}` / `{p['b']}`: {p['detail']}")
+    for p in fam["rejected_pairs"]:
+        w(
+            f"- Kept separate by judgment `{p['judgment_id']}`: `{p['a']}` / `{p['b']}`: "
+            f"{p['judgment_note']}"
+        )
+    w("")
+
     w("## Ranked keywords")
     w("")
     if not d["ranked_keywords"]:
         w("No keyword had evidence for every required signal.")
     else:
         w(
-            "| # | Keyword | Score | Relevance* | Demand | Competition (inv.) | Intent* | "
+            "| # | Keyword (family) | Score | Relevance | Demand | Competition (inv.) | Intent | "
             "Competitor coverage |"
         )
         w("|---|---|---|---|---|---|---|---|")
         for k in d["ranked_keywords"]:
-            cells = {s["signal"]: f"{s['contribution']:.3f}" for s in k["signals"]}
+            cells = {
+                s["signal"]: f"{s['contribution']:.3f}{SOURCE_MARK[s['source']]}"
+                for s in k["signals"]
+            }
+            extra = len(k["family_members"]) - 1
+            name = k["keyword"] + (
+                f" (+{extra} variant{'s' if extra > 1 else ''})" if extra else ""
+            )
             w(
-                f"| {k['rank']} | {k['keyword']} | {k['score']:.3f} | {cells['relevance']} | "
+                f"| {k['rank']} | {name} | {k['score']:.3f} | {cells['relevance']} | "
                 f"{cells['demand']} | {cells['competition']} | {cells['intent']} | "
                 f"{cells['competitor_coverage']} |"
             )
         w("")
-        w("Cells show weighted contributions. *Heuristic placeholder (no evidence).")
+        w(
+            "Cells show weighted contributions. J = semantic judgment (evidence-backed); "
+            "H = heuristic placeholder (no evidence); unmarked = measured evidence."
+        )
     w("")
 
     w("## Signal breakdown")
@@ -307,13 +467,19 @@ def render_markdown(result: ResearchResult) -> str:
     for k in d["ranked_keywords"]:
         w(f"### {k['rank']}. {k['keyword']}: {k['score']:.3f}")
         w("")
-        w("| Signal | Raw | Normalized | Weight | Contribution | Evidence | Derivation |")
-        w("|---|---|---|---|---|---|---|")
+        if len(k["family_members"]) > 1:
+            w("Family phrases: " + ", ".join(f"`{p}`" for p in k["family_members"]))
+            w("")
+        if k["intent_label"]:
+            w(f"Intent label (judgment): {k['intent_label']}")
+            w("")
+        w("| Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |")
+        w("|---|---|---|---|---|---|---|---|")
         for s in k["signals"]:
             w(
-                f"| {s['signal']}{' (heuristic)' if s['heuristic'] else ''} | {s['raw']:.3f} | "
-                f"{s['normalized']:.3f} | {s['weight']:.2f} | {s['contribution']:.3f} | "
-                f"{_ids(s['evidence_ids'], 2)} | {s['derivation']} |"
+                f"| {s['signal']} | {s['source']} | {s['raw']:.3f} | {s['normalized']:.3f} | "
+                f"{s['weight']:.2f} | {s['contribution']:.3f} | {_ids(s['evidence_ids'], 2)} | "
+                f"{s['derivation']} |"
             )
         w("")
 
@@ -325,6 +491,68 @@ def render_markdown(result: ResearchResult) -> str:
             w(f"- {u['keyword']}: {reasons}")
         w("")
 
+    if d["judgments"] or d["invalid_judgments"] or d["entity_flags"]:
+        w("## Semantic judgments")
+        w("")
+        counts: dict[str, int] = {}
+        for j in d["judgments"]:
+            counts[j["type"]] = counts.get(j["type"], 0) + 1
+        models = sorted({f"{j['model']} ({j['prompt_version']})" for j in d["judgments"]})
+        w(
+            f"{len(d['judgments'])} valid judgments: "
+            + (", ".join(f"{t} {n}" for t, n in sorted(counts.items())) or "none")
+            + (f". Models/prompts: {'; '.join(models)}." if models else ".")
+        )
+        for flag in d["entity_flags"]:
+            w(
+                f"- Entity flag: `{flag['keyword']}` is a {flag['label']} reference "
+                f"({flag['entity']}); kept out of the backend and of listing recommendations. "
+                f"Judgment `{flag['judgment_id']}`"
+            )
+        for bad in d["invalid_judgments"]:
+            w(f"- Invalid judgment `{bad['evidence_id']}` (ignored): {bad['reason']}")
+        w("")
+
+    themes = d["review_themes"]
+    if themes is not None:
+        w("## Review themes")
+        w("")
+        w(f"Repeated means at least {themes['min_count']} supporting reviews.")
+        w("")
+        for title, items in (
+            ("Repeated positive themes", themes["positives"]),
+            ("Repeated complaints", themes["complaints"]),
+        ):
+            w(f"### {title}")
+            w("")
+            if not items:
+                w("None.")
+            for t in items:
+                own = " (includes our product)" if t["about_own_product"] else ""
+                w(
+                    f"- **{t['theme']}**: {t['count']} reviews across "
+                    f"{', '.join(t['products'])}{own}. Evidence: "
+                    f"{_ids([t['theme_evidence_id'], *t['review_evidence_ids']])}"
+                )
+            w("")
+        w("### Possible listing opportunities")
+        w("")
+        if not themes["opportunities"]:
+            w("None.")
+        for o in themes["opportunities"]:
+            w(f"- {o['statement']} Evidence: {_ids(o['evidence_ids'])}")
+        w("")
+        if themes["other"]:
+            w(
+                "Other themes (not repeated, or mixed/neutral): "
+                + ", ".join(
+                    f"{t['theme']} ({t['polarity']}, {t['count']})" for t in themes["other"]
+                )
+            )
+            w("")
+        for bad in themes["invalid"]:
+            w(f"- Invalid theme `{bad['evidence_id']}` (ignored): {bad['reason']}")
+
     w("## Recommendations")
     w("")
     if not d["recommendations"]:
@@ -335,9 +563,11 @@ def render_markdown(result: ResearchResult) -> str:
         )
         consider = ", ".join(r["suggested_fields"]) or "no field (all blocked by recipe rules)"
         blocked = "".join(f" Not {b['field']} (`{b['rule_id']}`)." for b in r["blocked_fields"])
+        variants = [p for p in r["family_members"] if p != r["keyword"]]
+        family = f" Family variants: {', '.join(variants)}." if variants else ""
         w(
             f"- **{r['kind']}** `{r['keyword']}`: {r['reason']} Consider: {consider}."
-            f"{blocked}{packed} Evidence: {_ids(r['evidence_ids'])}"
+            f"{blocked}{family}{packed} Evidence: {_ids(r['evidence_ids'])}"
         )
     w("")
 

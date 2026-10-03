@@ -203,15 +203,23 @@ def _competitor_reviews(ctx: RunContext, priority: str) -> TaskRecord:
             )
         )
     ids, new, reused = ctx.store_all(returned)
+    used = [provider.name]
+    note = f"reviews for {len(asins)} ASINs"
+    themer = ctx.providers.review_themes
+    if themer is None:
+        note += "; no review-theme provider configured"
+    else:
+        # Themes are extracted from the stored review evidence, which is
+        # already persisted at this point.
+        stored = ctx.stored(EvidenceKind.REVIEW_SAMPLE)
+        theme_ids, theme_new, theme_reused = ctx.store_all(
+            themer.themes(stored, marketplace=ctx.marketplace, run_id=ctx.run_id) if stored else []
+        )
+        used.append(themer.name)
+        ids, new, reused = ids + theme_ids, new + theme_new, reused + theme_reused
+        note += f"; {len(theme_ids)} review themes from {len(stored)} stored reviews"
     return TaskRecord(
-        priority,
-        "competitor_reviews",
-        TaskStatus.EXECUTED,
-        (provider.name,),
-        ids,
-        new,
-        reused,
-        f"reviews for {len(asins)} ASINs; stored only, theme analysis needs semantic review",
+        priority, "competitor_reviews", TaskStatus.EXECUTED, tuple(used), ids, new, reused, note
     )
 
 

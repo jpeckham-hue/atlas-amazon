@@ -40,7 +40,15 @@ def test_scenario_invariants(results, name):
     assert scores == sorted(scores, reverse=True)
     for s in r.ranked:
         assert s.score == pytest.approx(sum(c.contribution for c in s.contributions))
-        assert set(s.heuristic_signals) == {"relevance", "intent"}
+        derivation = r.derivation(s.keyword)
+        for c in s.contributions:
+            source = derivation.sources[c.signal].value
+            # A signal is heuristic exactly when its source says so; judgments cite evidence.
+            assert c.heuristic == (source == "heuristic"), (name, s.keyword, c.signal)
+            if c.signal in ("relevance", "intent"):
+                assert source in ("judgment", "heuristic")
+            else:
+                assert source == "evidence"
         for c in s.contributions:
             if c.signal in ("demand", "competition", "competitor_coverage"):
                 assert c.evidence_ids, (name, s.keyword, c.signal)
@@ -79,7 +87,11 @@ class TestBookScenario:
         assert all(len(slot) <= 50 for slot in value)
         # KDP avoid-terms ("book", "kindle unlimited") never reach the keyword boxes.
         assert not any("kindle unlimited" in slot or "book" in slot.split() for slot in value)
-        assert {x.rule_id for x in plan.rule_exclusions} == {"keyword_avoid_terms"}
+        assert {x.rule_id for x in plan.rule_exclusions} == {
+            "keyword_avoid_terms",
+            "entity_judgment:author",
+            "entity_judgment:trademark",
+        }
         # "cozy mystery" is fully covered by the subtitle, so it is excluded as visible
         # (longer phrases containing it still add new words and may be packed).
         assert "cozy mystery" not in plan.packed_keywords
@@ -161,9 +173,10 @@ def test_end_to_end_smoke_with_jsonl(tmp_path):
     assert len(reopened) == first.evidence.total  # nothing duplicated
     a, b = report_dict(first), report_dict(second)
     # Only the new/reused bookkeeping differs; every derived result is identical.
-    assert [t["new_records"] for t in b["tasks"]] == [0] * len(b["tasks"])
-    assert [t["reused_records"] for t in b["tasks"]] == [t["new_records"] for t in a["tasks"]]
-    a.pop("tasks"), b.pop("tasks")
+    for key in ("tasks", "semantic_tasks"):
+        assert [t["new_records"] for t in b[key]] == [0] * len(b[key])
+        assert [t["reused_records"] for t in b[key]] == [t["new_records"] for t in a[key]]
+        a.pop(key), b.pop(key)
     assert a == b
 
     markdown = render_markdown(first)

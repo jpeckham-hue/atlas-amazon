@@ -9,10 +9,19 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.3: first end-to-end offline research workflow.** `ResearchRun`
-> answers "which keywords matter, what am I missing, why, and what should
-> change?" for a book or a product listing, from fixture data, with every
-> number traced to evidence. Also in place:
+> Status: **v0.4a: offline semantic layer.** `ResearchRun` answers "which
+> keywords matter, what am I missing, why, and what should change?" for a
+> book or a product listing, from fixture data, with every number traced to
+> evidence. New in v0.4a:
+> * keyword families group equivalent phrases, with an explained link for
+>   each grouping;
+> * a `JudgmentProvider` contract (relevance, intent, entity, equivalence),
+>   recorded as hashed, versioned Evidence; there is a fixture fake and no
+>   LLM yet;
+> * review themes: praise, complaints and conditional listing opportunities.
+>
+> Every relevance and intent value is marked as either a judgment or a
+> heuristic. Also in place:
 > * recipe loading, with rules sourced to official Amazon and KDP pages;
 > * keyword normalization, coverage and decomposable scoring;
 > * backend keyword packing and the listing audit;
@@ -186,6 +195,8 @@ src/atlas_amazon/
   evidence/   identity, serialization, store Protocol, JSONL store
   providers/  Catalog/KeywordData/Suggestion/Review Protocols + fixture fakes
   planner/    Proposal + validate_proposal, backend plan, gap recommendations
+  judgments/  JudgmentRequest, judgment Evidence contract, parse_judgment
+  reviews/    review-theme Evidence, summaries, listing opportunities
   research/   ResearchRun orchestration, priority tasks, scenarios
   report/     report dict / JSON / Markdown (formatting only)
 ```

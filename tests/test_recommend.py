@@ -106,7 +106,7 @@ class TestKeywordRecommendations:
             }
         )
         scores = ranked(product, "water bottle", "leak proof", "gym", "straw lid")
-        coverage, recs = keyword_recommendations(product, listing, scores, top_n=10)
+        coverage, _, recs = keyword_recommendations(product, listing, scores, top_n=10)
         kinds = {r.keyword: r.kind for r in recs}
         assert "water bottle" not in kinds  # already in the title
         assert kinds["leak proof"] is RecommendationKind.PLACEMENT_UPGRADE
@@ -124,14 +124,14 @@ class TestKeywordRecommendations:
 
     def test_top_n_limits_recommendations(self, product):
         scores = ranked(product, "a b", "c d", "e f")
-        _, recs = keyword_recommendations(product, Listing({"title": "x"}), scores, top_n=2)
+        _, _, recs = keyword_recommendations(product, Listing({"title": "x"}), scores, top_n=2)
         assert [r.rank for r in recs] == [1, 2]
         with pytest.raises(ValueError):
             keyword_recommendations(product, Listing({"title": "x"}), scores, top_n=0)
 
     def test_blocked_fields_cite_rules(self, product):
         scores = ranked(product, "hot item mug")
-        _, [rec] = keyword_recommendations(product, Listing({"title": "x"}), scores, top_n=5)
+        _, _, [rec] = keyword_recommendations(product, Listing({"title": "x"}), scores, top_n=5)
         assert ("title", "title_subjective_commentary") in rec.blocked_fields
         assert "title" not in rec.suggested_fields
 
@@ -139,8 +139,12 @@ class TestKeywordRecommendations:
         listing = Listing({"title": "Mug"})
         scores = ranked(product, "travel cup")
         plan = plan_backend(product, listing, scores, created_at=T0)
-        _, [rec] = keyword_recommendations(product, listing, scores, top_n=5, backend_plan=plan)
+        _, _, [rec] = keyword_recommendations(product, listing, scores, top_n=5, backend_plan=plan)
         assert rec.covered_by_proposal == plan.proposal.id
 
     def test_no_ranked_keywords(self, product):
-        assert keyword_recommendations(product, Listing({"title": "x"}), [], top_n=5) == (None, [])
+        assert keyword_recommendations(product, Listing({"title": "x"}), [], top_n=5) == (
+            None,
+            (),
+            [],
+        )

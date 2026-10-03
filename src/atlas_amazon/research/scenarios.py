@@ -7,7 +7,8 @@
       "product": {"title": ..., "recipe_id": ..., "marketplace": "US", "asin": ...,
                   "competitor_asins": [...], "attributes": {"seed_keywords": [...]}},
       "listing": {"title": ..., ...},
-      "providers": ["catalog", "keywords", "suggestions", "reviews"],
+      "providers": ["catalog", "keywords", "suggestions", "reviews", "review_themes",
+                    "judgments"],
       "fixture": { ...providers.fixtures format... }
     }
 
@@ -29,8 +30,10 @@ from atlas_amazon.models import Listing, ProductInput
 from atlas_amazon.providers.fixtures import (
     FixtureCatalogProvider,
     FixtureData,
+    FixtureJudgmentProvider,
     FixtureKeywordDataProvider,
     FixtureReviewProvider,
+    FixtureReviewThemeProvider,
     FixtureSuggestionProvider,
 )
 from atlas_amazon.research.run import ResearchConfig, ResearchProviders, ResearchResult, ResearchRun
@@ -40,6 +43,8 @@ _ROLES = {
     "keywords": FixtureKeywordDataProvider,
     "suggestions": FixtureSuggestionProvider,
     "reviews": FixtureReviewProvider,
+    "review_themes": FixtureReviewThemeProvider,
+    "judgments": FixtureJudgmentProvider,
 }
 _KEYS = frozenset({"name", "run_id", "started_at", "product", "listing", "providers", "fixture"})
 

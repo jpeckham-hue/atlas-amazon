@@ -63,6 +63,8 @@ class EvidenceKind(StrEnum):
     KEYWORD_METRIC = "keyword_metric"
     AUTOCOMPLETE_SUGGESTION = "autocomplete_suggestion"
     REVIEW_SAMPLE = "review_sample"
+    REVIEW_THEME = "review_theme"
+    JUDGMENT = "judgment"
 
 
 @dataclass(frozen=True, slots=True)

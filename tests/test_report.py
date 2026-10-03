@@ -62,7 +62,7 @@ def test_json_is_valid_and_stable(result):
 def test_markdown_shows_every_ranked_keyword_and_proposal(result):
     md = render_markdown(result)
     for score in result.ranked:
-        assert f"| {score.keyword} |" in md
+        assert f"| {score.keyword}" in md
     for proposal in result.proposals:
         assert proposal.id in md
     for d in result.unscored:

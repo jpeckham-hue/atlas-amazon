@@ -14,11 +14,20 @@
 Gaps and upgrades are `Recommendation`s, not Proposals: they say *what* is
 missing and *where* it would count more, but write no copy. Every one
 carries the evidence IDs of the keyword's score.
+
+**Keyword families.** Ranked keywords are family canonicals. Coverage
+counts a family as covered when *any* member phrase appears, so "water
+bottle insulated" in a bullet covers the "insulated water bottle" family,
+and placement is the best over members. Packing uses the canonical only:
+the other members share its words, so packing them separately would waste
+space. They are listed as `redundant_members`. Families an entity judgment
+flags (brand, author, trademark) are kept out of the backend, citing the
+judgment.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -49,6 +58,7 @@ class BackendPlan:
     exclusions: tuple[Exclusion, ...]  # from the packer
     rule_exclusions: tuple[RuleExclusion, ...]  # removed before packing
     retained: tuple[str, ...]  # current backend content kept after ranked keywords (unscored)
+    redundant_members: tuple[str, ...]  # family members not packed separately (same words)
     used: int  # bytes (bytes mode) or filled slots (slots mode)
     capacity: int
     note: str
@@ -72,6 +82,19 @@ class Recommendation:
     evidence_ids: tuple[str, ...]
     heuristic_signals: tuple[str, ...]
     covered_by_proposal: str | None  # backend proposal that already packs it, if any
+    family_members: tuple[str, ...] = ()  # every phrase in the keyword's family
+    matched_member: str | None = None  # member phrase found in the listing (upgrades)
+
+
+@dataclass(frozen=True, slots=True)
+class FamilyCoverage:
+    keyword: str  # family canonical
+    members: tuple[str, ...]
+    covered: bool
+    exact_fields: tuple[str, ...]  # union over members, in field-weight order
+    best_field: str | None
+    best_member: str | None
+    placement_score: float
 
 
 def _prohibiting_rule(recipe: Recipe, field_name: str, text: str) -> RuleExclusion | None:
@@ -93,16 +116,27 @@ def _evidence_for(ranked: Sequence[KeywordScore], keywords: set[str]) -> tuple[s
 
 
 def plan_backend(
-    recipe: Recipe, listing: Listing, ranked: Sequence[KeywordScore], *, created_at: datetime
+    recipe: Recipe,
+    listing: Listing,
+    ranked: Sequence[KeywordScore],
+    *,
+    created_at: datetime,
+    families: Mapping[str, Sequence[str]] | None = None,
+    blocked: Mapping[str, RuleExclusion] | None = None,
 ) -> BackendPlan | None:
+    """`families`: canonical -> member phrases. `blocked`: canonical -> exclusion (entities)."""
     backend = recipe.backend
     if backend is None:
         return None
+    families = families or {}
+    blocked = blocked or {}
     spec = recipe.fields[backend.field_name]
     rule_excluded: list[RuleExclusion] = []
     eligible: list[KeywordScore] = []
     for score in ranked:
-        hit = _prohibiting_rule(recipe, backend.field_name, score.keyword)
+        hit = blocked.get(score.keyword) or _prohibiting_rule(
+            recipe, backend.field_name, score.keyword
+        )
         if hit:
             rule_excluded.append(hit)
         else:
@@ -111,7 +145,9 @@ def plan_backend(
     # Current backend content is kept at the lowest priority instead of being
     # silently dropped. It is unscored, and the rationale says so.
     # In bytes mode the field is a bag of words; in slots mode each box is a phrase.
-    ranked_keys = {s.keyword for s in ranked}
+    ranked_keys = {s.keyword for s in ranked} | {
+        member for s in ranked for member in families.get(s.keyword, ())
+    }
     segments = listing.segments(backend.field_name)
     if backend.mode == "bytes":
         pieces = [token for seg in segments for token in tokenize(seg)]
@@ -154,11 +190,18 @@ def plan_backend(
 
     packed_keywords = tuple(s.keyword for s in eligible if s.keyword in contributors)
     retained = tuple(item for item in retained_candidates if item in contributors)
+    redundant = tuple(
+        member
+        for keyword in packed_keywords
+        for member in families.get(keyword, ())
+        if member != keyword
+    )
     counts: dict[str, int] = {}
     for item in exclusions:
         counts[item.reason.value] = counts.get(item.reason.value, 0) + 1
-    if rule_excluded:
-        counts["prohibited_term"] = len(rule_excluded)
+    for item in rule_excluded:
+        kind = "entity_flag" if item.rule_id.startswith("entity_judgment:") else "prohibited_term"
+        counts[kind] = counts.get(kind, 0) + 1
     excluded_text = ", ".join(f"{n} {reason}" for reason, n in sorted(counts.items())) or "none"
 
     def plan(proposal: Proposal | None, note: str) -> BackendPlan:
@@ -170,6 +213,7 @@ def plan_backend(
             exclusions,
             tuple(rule_excluded),
             retained,
+            redundant,
             used,
             capacity,
             note,
@@ -187,6 +231,11 @@ def plan_backend(
         f"Packs {len(packed_keywords)} of {len(ranked)} ranked keywords, best first, into "
         f"{backend.field_name} ({unit}). Excluded: {excluded_text}."
     )
+    if redundant:
+        rationale += (
+            f" Skips {len(redundant)} redundant family member(s) sharing their canonical's "
+            f"words: {', '.join(redundant)}."
+        )
     if retained:
         rationale += f" Retains current unscored content: {', '.join(retained)}."
     dropped = [item for item in retained_candidates if item not in contributors]
@@ -203,6 +252,42 @@ def plan_backend(
     return plan(proposal, "proposed")
 
 
+def family_coverage(
+    recipe: Recipe,
+    listing: Listing,
+    keywords: Sequence[str],
+    families: Mapping[str, Sequence[str]] | None = None,
+) -> tuple[CoverageReport | None, tuple[FamilyCoverage, ...]]:
+    """Member-level coverage report plus one family-level summary per keyword."""
+    if not keywords:
+        return None, ()
+    families = families or {}
+    weights = dict(recipe.coverage_weights)
+    members_of = {k: tuple(families.get(k, (k,))) or (k,) for k in keywords}
+    phrases = list(dict.fromkeys(p for k in keywords for p in members_of[k]))
+    report = compute_coverage(phrases, listing, weights)
+    by_phrase = {kc.keyword: kc for kc in report.keywords}
+    field_order = list(weights)
+    summaries = []
+    for keyword in keywords:
+        hits = [by_phrase[p] for p in members_of[keyword] if p in by_phrase]
+        best = max(hits, key=lambda kc: kc.placement_score, default=None)
+        fields = {f for kc in hits for f in kc.exact_fields}
+        covered = any(kc.covered for kc in hits)
+        summaries.append(
+            FamilyCoverage(
+                keyword=keyword,
+                members=members_of[keyword],
+                covered=covered,
+                exact_fields=tuple(f for f in field_order if f in fields),
+                best_field=best.best_field if best and covered else None,
+                best_member=best.keyword if best and covered else None,
+                placement_score=best.placement_score if best else 0.0,
+            )
+        )
+    return report, tuple(summaries)
+
+
 def keyword_recommendations(
     recipe: Recipe,
     listing: Listing,
@@ -210,77 +295,95 @@ def keyword_recommendations(
     *,
     top_n: int,
     backend_plan: BackendPlan | None = None,
-) -> tuple[CoverageReport | None, list[Recommendation]]:
-    """Coverage of all ranked keywords, plus gap and placement recommendations for the top N."""
+    families: Mapping[str, Sequence[str]] | None = None,
+    blocked: Mapping[str, RuleExclusion] | None = None,
+) -> tuple[CoverageReport | None, tuple[FamilyCoverage, ...], list[Recommendation]]:
+    """Coverage of ranked keyword families, plus gap/placement recommendations for the top N.
+
+    Keywords in `blocked` (entity-flagged: another brand, author or trademark) get no
+    recommendation: no listing field may carry them.
+    """
+    blocked = blocked or {}
     if top_n < 1:
         raise ValueError("top_n must be >= 1")
     if not ranked:
-        return None, []
+        return None, (), []
+    families = families or {}
     weights = dict(recipe.coverage_weights)
-    coverage = compute_coverage([s.keyword for s in ranked], listing, weights)
+    coverage, summaries = family_coverage(recipe, listing, [s.keyword for s in ranked], families)
     backend_field = recipe.backend.field_name if recipe.backend else None
     visible = sorted(
         (name for name, w in weights.items() if w > 0 and name != backend_field),
         key=lambda name: (-weights[name], name),
     )
-    by_keyword = {kc.keyword: kc for kc in coverage.keywords}
+    by_keyword = {fc.keyword: fc for fc in summaries}
     packed = set(backend_plan.packed_keywords) if backend_plan else set()
     proposal_id = backend_plan.proposal.id if backend_plan and backend_plan.proposal else None
 
     recommendations = []
     for rank, score in enumerate(ranked[:top_n], 1):
-        kc = by_keyword[score.keyword]
-        blocked = tuple(
+        if score.keyword in blocked:
+            continue
+        fc = by_keyword[score.keyword]
+        field_blocks = tuple(
             (name, hit.rule_id)
             for name in visible
             if (hit := _prohibiting_rule(recipe, name, score.keyword)) is not None
         )
-        blocked_names = {name for name, _ in blocked}
+        blocked_names = {name for name, _ in field_blocks}
         allowed = tuple(n for n in visible if n not in blocked_names)
+        grouped = len(fc.members) > 1
         common = {
             "keyword": score.keyword,
             "rank": rank,
             "score": score.score,
-            "current_fields": kc.exact_fields,
+            "current_fields": fc.exact_fields,
             "evidence_ids": score.evidence_ids,
             "heuristic_signals": score.heuristic_signals,
             "covered_by_proposal": proposal_id if score.keyword in packed else None,
-            "blocked_fields": blocked,
+            "blocked_fields": field_blocks,
+            "family_members": fc.members,
         }
-        if not kc.covered:
+        if not fc.covered:
+            what = (
+                f"none of its {len(fc.members)} family phrases appears in any weighted field"
+                if grouped
+                else "the exact phrase appears in no weighted field"
+            )
             recommendations.append(
                 Recommendation(
                     kind=RecommendationKind.KEYWORD_GAP,
                     suggested_fields=allowed,
-                    reason=(
-                        f"Ranked #{rank} (score {score.score:.3f}) but the exact phrase "
-                        f"appears in no weighted field."
-                    ),
+                    reason=f"Ranked #{rank} (score {score.score:.3f}) but {what}.",
                     **common,
                 )
             )
-        elif kc.placement_score < 1.0:
-            better = tuple(n for n in allowed if weights[n] > weights[kc.best_field])
+        elif fc.placement_score < 1.0:
+            better = tuple(n for n in allowed if weights[n] > weights[fc.best_field])
             if better:
+                via = f" (as '{fc.best_member}')" if fc.best_member != score.keyword else ""
                 recommendations.append(
                     Recommendation(
                         kind=RecommendationKind.PLACEMENT_UPGRADE,
                         suggested_fields=better,
                         reason=(
                             f"Ranked #{rank} (score {score.score:.3f}) but found only in "
-                            f"{kc.best_field} (placement {kc.placement_score:.2f})."
+                            f"{fc.best_field}{via} (placement {fc.placement_score:.2f})."
                         ),
+                        matched_member=fc.best_member,
                         **common,
                     )
                 )
-    return coverage, recommendations
+    return coverage, summaries, recommendations
 
 
 __all__ = [
     "BackendPlan",
+    "FamilyCoverage",
     "Recommendation",
     "RecommendationKind",
     "RuleExclusion",
+    "family_coverage",
     "keyword_recommendations",
     "plan_backend",
 ]

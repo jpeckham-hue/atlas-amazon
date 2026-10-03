@@ -7,16 +7,39 @@
     "recipe_id": "book",
     "marketplace": "US",
     "asin": "B0BOOK0001",
-    "competitor_asins": ["B0BOOKC001", "B0BOOKC002", "B0BOOKC003"],
-    "attributes": {"seed_keywords": ["cozy mystery", "small town mystery"]}
+    "competitor_asins": [
+      "B0BOOKC001",
+      "B0BOOKC002",
+      "B0BOOKC003"
+    ],
+    "attributes": {
+      "seed_keywords": [
+        "cozy mystery",
+        "small town mystery"
+      ],
+      "features": [
+        "Clean read with no gore or profanity",
+        "Includes original bakery recipes"
+      ]
+    }
   },
   "listing": {
     "title": "The Quiet Harbor",
     "subtitle": "A Cozy Mystery",
     "description": "When a body washes up beside the ferry dock, bakery owner Nell Avery must clear her brother's name before the harbor festival.",
-    "keywords": ["mystery books", "harbor town"]
+    "keywords": [
+      "mystery books",
+      "harbor town"
+    ]
   },
-  "providers": ["catalog", "keywords", "suggestions", "reviews"],
+  "providers": [
+    "catalog",
+    "keywords",
+    "suggestions",
+    "reviews",
+    "review_themes",
+    "judgments"
+  ],
   "fixture": {
     "provider": "fixture",
     "retrieved_at": "2026-10-03T08:55:00+00:00",
@@ -45,36 +68,304 @@
           "cozy mystery books",
           "cozy mystery series",
           "cozy mystery kindle unlimited",
-          "cozy mystery with cats"
+          "cozy mystery with cats",
+          "mystery books cozy",
+          "agatha christie cozy mystery"
         ],
-        "small town mystery": ["small town mystery books", "small town murder mystery"]
+        "small town mystery": [
+          "small town mystery books",
+          "small town murder mystery"
+        ]
       }
     },
     "keyword_metrics": {
       "US": {
-        "cozy mystery": {"search_volume": 60000, "competition": 0.9},
-        "cozy mystery books": {"search_volume": 33000, "competition": 0.85},
-        "cozy mystery series": {"search_volume": 22000, "competition": 0.7},
-        "cozy mystery kindle unlimited": {"search_volume": 15000, "competition": 0.5},
-        "cozy mystery with cats": {"search_volume": 4000, "competition": 0.3},
-        "small town mystery": {"search_volume": 9000, "competition": 0.6},
-        "small town mystery books": {"search_volume": 2500, "competition": 0.4},
-        "small town murder mystery": {"search_volume": 3000, "competition": 0.35},
-        "amateur sleuth": {"search_volume": 5000, "competition": 0.3},
-        "small town": {"search_volume": 80000, "competition": 0.95},
-        "mystery books": {"search_volume": 120000, "competition": 0.98},
-        "harbor town": {"search_volume": 50, "competition": 0.1}
+        "cozy mystery": {
+          "search_volume": 60000,
+          "competition": 0.9
+        },
+        "cozy mystery books": {
+          "search_volume": 33000,
+          "competition": 0.85
+        },
+        "cozy mystery series": {
+          "search_volume": 22000,
+          "competition": 0.7
+        },
+        "cozy mystery kindle unlimited": {
+          "search_volume": 15000,
+          "competition": 0.5
+        },
+        "cozy mystery with cats": {
+          "search_volume": 4000,
+          "competition": 0.3
+        },
+        "small town mystery": {
+          "search_volume": 9000,
+          "competition": 0.6
+        },
+        "small town mystery books": {
+          "search_volume": 2500,
+          "competition": 0.4
+        },
+        "small town murder mystery": {
+          "search_volume": 3000,
+          "competition": 0.35
+        },
+        "amateur sleuth": {
+          "search_volume": 5000,
+          "competition": 0.3
+        },
+        "small town": {
+          "search_volume": 80000,
+          "competition": 0.95
+        },
+        "mystery books": {
+          "search_volume": 120000,
+          "competition": 0.98
+        },
+        "harbor town": {
+          "search_volume": 50,
+          "competition": 0.1
+        },
+        "mystery books cozy": {
+          "search_volume": 1200,
+          "competition": 0.5
+        },
+        "agatha christie cozy mystery": {
+          "search_volume": 7000,
+          "competition": 0.5
+        }
       }
     },
     "reviews": {
       "US": {
         "B0BOOKC001": [
-          {"rating": 5, "text": "Charming village, clever puzzle, no gore."},
-          {"rating": 3, "text": "Guessed the killer early."}
+          {
+            "rating": 5,
+            "text": "Charming village, clever puzzle, no gore."
+          },
+          {
+            "rating": 3,
+            "text": "Guessed the killer early."
+          },
+          {
+            "rating": 5,
+            "text": "Cozy and clean, no swearing."
+          }
+        ],
+        "B0BOOKC002": [
+          {
+            "rating": 5,
+            "text": "The recipes at the end were a fun bonus."
+          },
+          {
+            "rating": 2,
+            "text": "The killer was obvious from chapter two."
+          }
         ],
         "B0BOOKC003": [
-          {"rating": 5, "text": "The cats steal the show!"}
+          {
+            "rating": 5,
+            "text": "The cats steal the show!"
+          },
+          {
+            "rating": 5,
+            "text": "A clean read, perfect for my book club."
+          }
         ]
+      }
+    },
+    "review_themes": {
+      "extractor": "fixture-precomputed",
+      "extractor_version": "themes-fixture-v1",
+      "markets": {
+        "US": [
+          {
+            "theme": "clean read (no gore or swearing)",
+            "polarity": "positive",
+            "reviews": [
+              "B0BOOKC001/0",
+              "B0BOOKC001/2",
+              "B0BOOKC003/1"
+            ],
+            "terms": [
+              "clean read",
+              "clean",
+              "no gore"
+            ],
+            "rationale": "Readers repeatedly value the absence of gore and profanity."
+          },
+          {
+            "theme": "predictable killer",
+            "polarity": "negative",
+            "reviews": [
+              "B0BOOKC001/1",
+              "B0BOOKC002/1"
+            ],
+            "terms": [
+              "twist",
+              "predictable",
+              "surprise ending"
+            ],
+            "rationale": "Two readers guessed the culprit early."
+          },
+          {
+            "theme": "recipes included",
+            "polarity": "positive",
+            "reviews": [
+              "B0BOOKC002/0"
+            ],
+            "terms": [
+              "recipes"
+            ],
+            "rationale": "One reader enjoyed bonus recipes."
+          },
+          {
+            "theme": "cat characters",
+            "polarity": "positive",
+            "reviews": [
+              "B0BOOKC003/0"
+            ],
+            "terms": [
+              "cats"
+            ],
+            "rationale": "One reader loved the cats."
+          }
+        ]
+      }
+    },
+    "judgments": {
+      "model": "fixture-judge-1",
+      "prompt_versions": {
+        "relevance": "relevance-fixture-v1",
+        "intent": "intent-fixture-v1",
+        "entity": "entity-fixture-v1",
+        "equivalence": "equivalence-fixture-v1"
+      },
+      "markets": {
+        "US": {
+          "relevance": {
+            "cozy mystery": {
+              "score": 0.95,
+              "confidence": 0.9,
+              "rationale": "The book's genre."
+            },
+            "small town": {
+              "score": 0.3,
+              "confidence": 0.8,
+              "rationale": "A setting word; on its own not a book search."
+            },
+            "small town mystery": {
+              "score": 0.85,
+              "confidence": 0.85,
+              "rationale": "Genre plus the book's setting."
+            },
+            "harbor town": {
+              "score": 0.2,
+              "confidence": 0.8,
+              "rationale": "Echoes the title, but readers don't search it."
+            },
+            "cozy mystery with cats": {
+              "score": 0.3,
+              "confidence": 0.8,
+              "rationale": "The book has no cat characters."
+            },
+            "small town murder mystery": {
+              "score": 0.8,
+              "confidence": 0.8,
+              "rationale": "Accurate subgenre description."
+            },
+            "small town mystery books": {
+              "score": 0.8,
+              "confidence": 0.8,
+              "rationale": "Accurate subgenre description."
+            },
+            "cozy mystery series": {
+              "score": 0.5,
+              "confidence": 0.6,
+              "rationale": "Series status is unknown from the input."
+            },
+            "cozy mystery kindle unlimited": {
+              "score": 0.6,
+              "confidence": 0.7,
+              "rationale": "Genre plus a program name."
+            },
+            "cozy mystery books": {
+              "score": 0.9,
+              "confidence": 0.85,
+              "rationale": "The genre, in plural form."
+            },
+            "mystery books": {
+              "score": 0.6,
+              "confidence": 0.8,
+              "rationale": "Broad parent category."
+            },
+            "amateur sleuth": {
+              "score": 0.8,
+              "confidence": 0.8,
+              "rationale": "The protagonist is an amateur sleuth."
+            },
+            "agatha christie cozy mystery": {
+              "score": 0.4,
+              "confidence": 0.8,
+              "rationale": "Names another author."
+            }
+          },
+          "intent": {
+            "cozy mystery": {
+              "label": "commercial_investigation",
+              "score": 0.7,
+              "confidence": 0.8,
+              "rationale": "Genre browsing."
+            },
+            "cozy mystery books": {
+              "label": "transactional",
+              "score": 0.85,
+              "confidence": 0.8,
+              "rationale": "Looking for books to buy."
+            },
+            "small town mystery": {
+              "label": "commercial_investigation",
+              "score": 0.7,
+              "confidence": 0.75,
+              "rationale": "Subgenre browsing."
+            },
+            "mystery books": {
+              "label": "commercial_investigation",
+              "score": 0.5,
+              "confidence": 0.8,
+              "rationale": "Broad browsing."
+            }
+          },
+          "entity": {
+            "agatha christie cozy mystery": {
+              "label": "author",
+              "entity": "Agatha Christie",
+              "confidence": 0.97,
+              "rationale": "Names an author not associated with this book."
+            },
+            "cozy mystery kindle unlimited": {
+              "label": "trademark",
+              "entity": "Kindle Unlimited",
+              "confidence": 0.9,
+              "rationale": "Amazon program name."
+            },
+            "cozy mystery": {
+              "label": "none",
+              "entity": null,
+              "confidence": 0.95,
+              "rationale": "Generic genre phrase."
+            }
+          },
+          "equivalence": {
+            "cozy mystery books || mystery books cozy": {
+              "equivalent": true,
+              "confidence": 0.85,
+              "rationale": "Same request: cozy mystery books, with the genre word moved."
+            }
+          }
+        }
       }
     }
   }

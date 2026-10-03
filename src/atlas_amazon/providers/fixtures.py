@@ -30,11 +30,15 @@ from typing import Any
 
 from atlas_amazon.evidence.identity import make_evidence
 from atlas_amazon.jsonvalue import freeze
+from atlas_amazon.judgments.contract import JudgmentRequest, judgment_evidence
 from atlas_amazon.keywords.normalize import normalize_text
 from atlas_amazon.models import Evidence, EvidenceKind, is_valid_asin
+from atlas_amazon.reviews.themes import review_theme_evidence
 
 _SECTIONS = ("catalog", "keyword_metrics", "suggestions", "reviews")
-_TOP_KEYS = frozenset({"provider", "retrieved_at", *_SECTIONS})
+# Semantic sections: {<metadata>..., "markets": {"US": ...}}
+_SEMANTIC = ("judgments", "review_themes")
+_TOP_KEYS = frozenset({"provider", "retrieved_at", *_SECTIONS, *_SEMANTIC})
 
 
 class FixtureError(ValueError):
@@ -47,6 +51,7 @@ class FixtureData:
     retrieved_at: datetime
     sections: Mapping[str, Any]
     origin: str = "inline"
+    semantic: Mapping[str, Any] = MappingProxyType({})
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], origin: str = "inline") -> FixtureData:
@@ -72,7 +77,16 @@ class FixtureData:
             ):
                 raise FixtureError(f"fixture section {name!r} must map marketplace -> object")
             sections[name] = freeze(section, name)
-        return cls(provider, retrieved_at, MappingProxyType(sections), origin)
+        semantic = {}
+        for name in _SEMANTIC:
+            if name in data:
+                block = data[name]
+                if not isinstance(block, Mapping) or not isinstance(block.get("markets"), Mapping):
+                    raise FixtureError(f"fixture {name!r} must be an object with 'markets'")
+                semantic[name] = freeze(block, name)
+        return cls(
+            provider, retrieved_at, MappingProxyType(sections), origin, MappingProxyType(semantic)
+        )
 
     @classmethod
     def load(cls, path: str | os.PathLike[str]) -> FixtureData:
@@ -244,3 +258,101 @@ class FixtureReviewProvider(_FixtureProvider):
             )
             for index, review in enumerate(samples)
         ]
+
+
+class FixtureReviewThemeProvider(_FixtureProvider):
+    """Precomputed themes. Each fixture theme cites reviews as "ASIN/index".
+
+    References are resolved against the review evidence passed in, so a theme
+    can only cite reviews that were actually collected (and stored) in the
+    run. Unresolvable references are dropped; a theme left with none is
+    omitted.
+    """
+
+    def themes(
+        self, reviews: Sequence[Evidence], *, marketplace: str, run_id: str | None = None
+    ) -> list[Evidence]:
+        _require_marketplace(marketplace)
+        block = self.fixture.semantic.get("review_themes")
+        if block is None:
+            return []
+        by_ref = {
+            f"{r.payload.get('asin')}/{r.payload.get('index')}": r
+            for r in reviews
+            if r.kind == EvidenceKind.REVIEW_SAMPLE
+        }
+        result = []
+        for i, entry in enumerate(block["markets"].get(marketplace, ())):
+            if not isinstance(entry, Mapping):
+                raise FixtureError(f"review_themes[{i}] must be an object")
+            supporting = [by_ref[ref] for ref in entry.get("reviews", ()) if ref in by_ref]
+            if not supporting:
+                continue
+            result.append(
+                review_theme_evidence(
+                    provider=self.name,
+                    theme=entry["theme"],
+                    polarity=entry["polarity"],
+                    reviews=supporting,
+                    terms=entry.get("terms", ()),
+                    extractor=block.get("extractor", "fixture"),
+                    extractor_version=block.get("extractor_version", "fixture-v1"),
+                    rationale=entry.get("rationale", "precomputed fixture theme"),
+                    marketplace=marketplace,
+                    run_id=run_id,
+                    extracted_at=self.fixture.retrieved_at,
+                    source_url=self.fixture.url("review_themes", marketplace, str(i)),
+                )
+            )
+        return result
+
+
+class FixtureJudgmentProvider(_FixtureProvider):
+    """Precomputed judgments keyed by normalized keyword, or "a || b" for equivalence.
+
+    Fixture shape:
+        "judgments": {"model": "...", "prompt_versions": {"relevance": "...", ...},
+                      "markets": {"US": {"relevance": {"kw": {"score": .., "confidence": ..,
+                                                              "rationale": ".."}}, ...}}}
+    The fixture's own `retrieved_at` is used as the judgment timestamp.
+    """
+
+    def judge(
+        self, requests: Sequence[JudgmentRequest], *, marketplace: str, run_id: str | None = None
+    ) -> list[Evidence]:
+        _require_marketplace(marketplace)
+        block = self.fixture.semantic.get("judgments")
+        if block is None:
+            return []
+        market = block["markets"].get(marketplace, {})
+        versions = block.get("prompt_versions", {})
+        result = []
+        seen: set[str] = set()
+        for request in requests:
+            if request.input_hash in seen:
+                continue
+            seen.add(request.input_hash)
+            entry = market.get(request.type.value, {}).get(request.subject)
+            if entry is None:
+                continue
+            if not isinstance(entry, Mapping) or "rationale" not in entry:
+                raise FixtureError(f"judgment {request.type}/{request.subject!r} needs a rationale")
+            outcome = {k: v for k, v in entry.items() if k not in ("confidence", "rationale")}
+            result.append(
+                judgment_evidence(
+                    provider=self.name,
+                    request=request,
+                    result=outcome,
+                    confidence=entry.get("confidence"),
+                    model=block.get("model", "fixture-judge"),
+                    prompt_version=versions.get(request.type.value, "fixture-v1"),
+                    rationale=entry["rationale"],
+                    marketplace=marketplace,
+                    judged_at=self.fixture.retrieved_at,
+                    run_id=run_id,
+                    source_url=self.fixture.url(
+                        "judgments", marketplace, f"{request.type.value}/{request.subject}"
+                    ),
+                )
+            )
+        return result

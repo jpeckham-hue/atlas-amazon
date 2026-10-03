@@ -216,6 +216,8 @@ class TestOrchestration:
             "keywords": None,
             "suggestions": None,
             "reviews": None,
+            "review_themes": None,
+            "judgments": None,
         }
 
     def test_no_competitors_is_no_input(self):

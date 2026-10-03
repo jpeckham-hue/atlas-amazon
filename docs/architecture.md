@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.3), `·` = planned.
+`✓` = exists (v0.4a), `·` = planned.
 
 ```
 atlas-amazon/
@@ -77,7 +77,8 @@ atlas-amazon/
 │   │   ├── coverage.py            ✓ exact/token/placement coverage
 │   │   ├── scoring.py             ✓ decomposable keyword score, ranking, signal transforms
 │   │   ├── candidates.py          ✓ keyword candidates from seeds/suggestions/competitors
-│   │   └── signals.py             ✓ evidence -> scoring signals, explicit missing data
+│   │   ├── families.py            ✓ keyword families: explained equivalence links
+│   │   └── signals.py             ✓ family signals; judgment or heuristic sources
 │   ├── backend/
 │   │   └── packing.py             ✓ byte-budget and slot packing with exclusion reasons
 │   ├── audit/
@@ -100,6 +101,10 @@ atlas-amazon/
 │   │   ├── run.py                 ✓ ResearchRun orchestration, ResearchResult
 │   │   ├── tasks.py               ✓ research priority -> task registry
 │   │   └── scenarios.py           ✓ offline scenario loader
+│   ├── judgments/
+│   │   └── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
+│   ├── reviews/
+│   │   └── themes.py              ✓ review-theme Evidence, summaries, opportunities
 │   ├── report/
 │   │   └── render.py              ✓ report dict / JSON / Markdown (formatting only)
 │   ├── llm/                       · prompt contracts; outputs re-validated
@@ -414,8 +419,8 @@ start or end with a stopword or be digits only.
 | demand | `keyword_metric` | `log1p(volume) / log1p(max volume among candidate metrics)` |
 | competition | `keyword_metric` | metric `competition` ∈ [0, 1], scored as `1 − value` |
 | competitor_coverage | `catalog_item` | share of competitors with the exact phrase in one segment |
-| relevance | **heuristic** | share of non-stopword keyword terms found in the product title or seeds |
-| intent | **heuristic** | `min(1, words / 4)`, a specificity proxy |
+| relevance | **judgment** if available (v0.4a), else **heuristic**: share of non-stopword keyword terms found in the product title or seeds |
+| intent | **judgment** if available (v0.4a), else **heuristic**: `min(1, words / 4)`, a specificity proxy |
 
 Heuristic signals carry no evidence IDs, so every score lists them in
 `heuristic_signals` and every report marks them. **No defaults:** a
@@ -472,6 +477,131 @@ JSON per scenario (inputs, configured provider roles, fixture data):
 suggestion or review provider, a competitor missing from the catalog,
 incomplete metrics) and `well_covered_listing`.
 
+## Semantic layer (v0.4a, offline)
+
+v0.4a prepares the semantic layer with no external dependencies. Everything
+semantic is either a deterministic, explainable rule or a recorded
+**judgment** (Evidence) from a `JudgmentProvider`. Today that provider is
+fixture-backed; in v0.4b it can be an LLM.
+
+### Keyword families (`keywords/families.py`)
+
+Ranking operates on **families** of phrases that are the same search
+concept. Reports still list every phrase.
+
+| Link | When | Example |
+|---|---|---|
+| (candidate merge) | same plural-folded key; happens earlier in `build_candidates` | "water bottle" / "Water Bottles" |
+| `stopword_variant` | same content words, same order; one phrase only *adds* connecting words | "water bottle for kids" ~ "water bottle kids" |
+| `attribute_rotation` | an attribute-like block (1–2 words) moves between the front and back of an intact core of ≥ 2 words | "insulated water bottle" ~ "water bottle insulated"; "32 oz water bottle" ~ "water bottle 32 oz" |
+| `judgment` | a *candidate pair* (same words, other order) confirmed by an `equivalence` judgment with confidence ≥ `min_equivalence_confidence` (0.7) | "kids water bottle" ~ "water bottles for kids" |
+
+Attribute-like means one of:
+* a number, a unit, or a listed attribute word;
+* a 5+ letter word ending in -ed, -less, -proof, -free, -able, -ible, -ful or -ous;
+* a two-word block that ends in proof/free/resistant/safe or starts with an attribute.
+
+**Never grouped automatically:**
+* noun swaps ("water bottle" / "bottle water");
+* head-noun moves ("dog food bowl" / "bowl dog food");
+* substituted connecting words ("mug for tea" / "mug with tea");
+* different specificity ("cozy mystery" / "cozy mystery books").
+
+Candidate pairs without a judgment are reported as *unconfirmed*; judged
+"not equivalent" (or low-confidence) pairs as *rejected*, citing the
+judgment. A judgment can only confirm a deterministic candidate pair. It
+can't join unrelated phrases.
+
+* **Family ID**: `fam_` + hash of the sorted member keys, independent of
+  the label.
+* **Canonical label**: the member with the highest search volume;
+  otherwise fewest words, then shortest text, then alphabetical. The
+  reason is recorded.
+* **Aggregation without double counting** (`derive_signals`):
+  * demand = log-scaled **sum** of distinct members' volumes (each metric
+    evidence once);
+  * competition = volume-weighted mean;
+  * competitor coverage = the share of competitors containing **any**
+    member (each competitor once).
+* **Coverage**: a family is covered if any member appears, and its
+  placement is the best member's placement.
+* **Backend packing**: packs the canonical only. Other members share its
+  words and are listed as `redundant_members`.
+
+`ResearchConfig(keyword_families=False)` disables grouping, which is used
+to compare outputs.
+
+### Judgment contract (`judgments/contract.py`)
+
+`JudgmentRequest(type, input)` has four types: `relevance`, `intent`,
+`entity` and `equivalence`. The input is frozen JSON. Keyword requests
+carry `{keyword, context: {product_title, seeds}}`; equivalence carries
+`{phrases: [a, b]}`, sorted. `input_hash = sha256(canonical {"type",
+"input"})`.
+
+Judgment Evidence (`kind = "judgment"`) payload:
+`judgment_type, input, input_hash, result, confidence, model,
+prompt_version, rationale`. The envelope supplies provider, marketplace,
+timestamp (`retrieved_at`), run_id and subject.
+
+| type | result | used for |
+|---|---|---|
+| relevance | `{score ∈ [0,1]}` | relevance signal |
+| intent | `{label ∈ transactional / commercial_investigation / informational / navigational, score ∈ [0,1]}` | intent signal (score = purchase-intent strength) and label |
+| entity | `{label ∈ none / brand / author / trademark / product_line / other, entity}` | brand/author/trademark families are excluded from backend packing and from listing recommendations |
+| equivalence | `{equivalent: bool}` | family links |
+
+`parse_judgment` re-validates every field and **recomputes the input
+hash**. ResearchRun stores every returned judgment *before* parsing it.
+Records that fail parsing, or answer a request that was never made, are
+listed under `invalid_judgments` and ignored. Unanswered requests fall
+back explicitly.
+
+`JudgmentProvider.judge(requests, *, marketplace, run_id) -> list[Evidence]`.
+`FixtureJudgmentProvider` reads a fixture `judgments` block (model,
+`prompt_versions`, and per-market answers keyed by keyword or `"a || b"`).
+A rationale is required.
+
+**Signal sources.** Each `SignalDerivation` records a source for every
+signal:
+* `evidence`: demand, competition, coverage;
+* `judgment`: relevance or intent from a valid judgment, citing its
+  evidence ID;
+* `heuristic`: the v0.3 fallback, with no evidence, so `score_keyword`
+  flags it.
+
+Reports mark each relevance or intent contribution **J** (judgment) or
+**H** (heuristic).
+
+### Review themes (`reviews/themes.py`)
+
+Theme Evidence (`kind = "review_theme"`) payload:
+`theme, polarity (positive/negative/mixed/neutral), review_evidence_ids,
+products, count, terms, extractor, extractor_version, rationale`.
+`review_theme_evidence` derives `products` and `count` from the actual
+review evidence. `parse_review_theme` re-derives them, so a theme can't
+overstate its support or cite reviews that aren't stored.
+
+`ReviewThemeProvider.themes(reviews, *, marketplace, run_id)` receives the
+run's **stored** review evidence. In v0.4a, `FixtureReviewThemeProvider`
+resolves precomputed themes, which cite reviews as `"ASIN/index"`. It runs
+inside the `competitor_reviews` task, right after reviews are stored.
+
+`summarize_review_themes` (deterministic) produces:
+* **repeated positives** and **repeated complaints**: count ≥
+  `min_theme_count` (2);
+* everything else;
+* **listing opportunities**, from repeated competitor complaints and
+  praise.
+
+Opportunities are phrased conditionally ("only if the product genuinely
+avoids this problem", "if the product offers this"). The single exception
+is when one of the theme's terms appears in
+`ProductInput.attributes["features"]`; the opportunity then quotes that
+first-party input verbatim. Themes only about our own product are never
+presented as competitive opportunities. No claim about our product is
+generated from competitor evidence.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -480,23 +610,27 @@ incomplete metrics) and `well_covered_listing`.
    store Protocol plus in-memory and append-only JSONL stores, provider
    Protocols with fixture fakes, and the Proposal model with audit-gated
    validation.
-3. **v0.3 (this release)**: the offline `ResearchRun`: priority-driven
-   collection, evidence-derived signals with explicit missing data,
-   ranking, audit, backend proposal, gap and placement recommendations,
-   validated proposals, and a human-review report. There are four fixture
-   scenarios.
-4. **v0.4 (recommended)**: replace the two heuristic placeholders with
-   recorded judgments, still offline-testable:
-   * a `JudgmentProvider` protocol that produces relevance and intent as
-     Evidence (model, prompt version, input hash), with fixture-backed fakes;
-   * review-theme extraction stored as `review_theme` evidence;
-   * a semantic gate for entity rules (other authors' names, trademarks,
-     brand names in search terms) that turns documented-but-unenforced rules
-     into findings, flagged as model-derived.
-
-   Then a minimal CLI over `ResearchRun` and the first read-only live adapter
-   (autocomplete or SP-API Catalog) behind configuration, with raw-response
-   capture.
-5. **Later**: SP-API Product Type Definitions to verify per-type limits,
-   LLM copy generation with deterministic re-validation, an approval-gated
-   write path, more category recipes, and a multi-marketplace rules matrix.
+3. **v0.3**: the offline `ResearchRun`: priority-driven collection,
+   evidence-derived signals with explicit missing data, ranking, audit,
+   backend proposal, gap and placement recommendations, validated
+   proposals, and a human-review report.
+4. **v0.4a (this release)**: offline semantic layer. Keyword families with
+   explained links; the `JudgmentProvider` contract (relevance, intent,
+   entity, equivalence) with a fixture fake; judgment-sourced
+   relevance/intent with an explicit heuristic fallback; entity-flag
+   exclusions; review-theme evidence and summaries with conditional,
+   first-party-grounded listing opportunities.
+5. **v0.4b (recommended)**: an LLM-backed `JudgmentProvider` and
+   `ReviewThemeProvider` behind configuration:
+   * versioned prompt templates in the repo, with raw request/response
+     capture and a judgment cache keyed by input hash;
+   * structured-output validation that reuses `parse_judgment`;
+   * cost and rate limits;
+   * a recorded-response test harness, so CI stays offline;
+   * evaluation: agreement between the LLM and the fixture judgments,
+     disagreements surfaced in the report, and a human override path
+     (judgments with `provider = "human"`).
+6. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+   Catalog, Product Type Definitions), LLM copy generation with
+   deterministic re-validation, an approval-gated write path, more recipes,
+   and a multi-marketplace rules matrix.

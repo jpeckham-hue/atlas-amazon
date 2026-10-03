@@ -7,8 +7,22 @@
     "recipe_id": "physical-product",
     "marketplace": "US",
     "asin": "B0ACME0001",
-    "competitor_asins": ["B0COMP0001", "B0COMP0002", "B0COMP0003"],
-    "attributes": {"seed_keywords": ["water bottle", "insulated water bottle"]}
+    "competitor_asins": [
+      "B0COMP0001",
+      "B0COMP0002",
+      "B0COMP0003"
+    ],
+    "attributes": {
+      "seed_keywords": [
+        "water bottle",
+        "insulated water bottle"
+      ],
+      "features": [
+        "Leak proof lid with carry loop",
+        "Double wall vacuum insulation keeps drinks cold for 24 hours",
+        "Fits most cup holders"
+      ]
+    }
   },
   "listing": {
     "title": "Acme Water Bottle, 32 oz, Stainless Steel",
@@ -21,7 +35,14 @@
     "description": "A sturdy stainless steel bottle for everyday hydration.",
     "search_terms": "flask gym hiking flask"
   },
-  "providers": ["catalog", "keywords", "suggestions", "reviews"],
+  "providers": [
+    "catalog",
+    "keywords",
+    "suggestions",
+    "reviews",
+    "review_themes",
+    "judgments"
+  ],
   "fixture": {
     "provider": "fixture",
     "retrieved_at": "2026-10-03T09:25:00+00:00",
@@ -29,17 +50,27 @@
       "US": {
         "B0COMP0001": {
           "title": "Hydra Insulated Water Bottle with Straw Lid, 32 oz",
-          "bullets": ["Double wall vacuum insulation", "Leak proof straw lid", "BPA free"],
+          "bullets": [
+            "Double wall vacuum insulation",
+            "Leak proof straw lid",
+            "BPA free"
+          ],
           "brand": "Hydra"
         },
         "B0COMP0002": {
           "title": "Peak Stainless Steel Water Bottle, Vacuum Insulated, 24 oz",
-          "bullets": ["Double wall vacuum insulation keeps drinks cold", "Leak proof cap"],
+          "bullets": [
+            "Double wall vacuum insulation keeps drinks cold",
+            "Leak proof cap"
+          ],
           "brand": "Peak"
         },
         "B0COMP0003": {
           "title": "Trail Insulated Water Bottle for Kids, Leak Proof",
-          "bullets": ["Straw lid for easy sipping", "BPA free stainless steel"],
+          "bullets": [
+            "Straw lid for easy sipping",
+            "BPA free stainless steel"
+          ],
           "brand": "Trail"
         }
       }
@@ -50,7 +81,10 @@
           "water bottle with straw",
           "water bottle insulated",
           "water bottles for kids",
-          "water bottle 32 oz"
+          "water bottle 32 oz",
+          "kids water bottle",
+          "bottle water",
+          "hydra water bottle"
         ],
         "insulated water bottle": [
           "insulated water bottle with straw",
@@ -60,30 +94,303 @@
     },
     "keyword_metrics": {
       "US": {
-        "water bottle": {"search_volume": 450000, "competition": 0.95},
-        "insulated water bottle": {"search_volume": 120000, "competition": 0.8},
-        "water bottle with straw": {"search_volume": 90000, "competition": 0.7},
-        "water bottle insulated": {"search_volume": 20000, "competition": 0.75},
-        "water bottles for kids": {"search_volume": 60000, "competition": 0.65},
-        "water bottle 32 oz": {"search_volume": 30000, "competition": 0.5},
-        "insulated water bottle with straw": {"search_volume": 25000, "competition": 0.45},
-        "insulated water bottle stainless steel": {"search_volume": 12000, "competition": 0.4},
-        "leak proof": {"search_volume": 8000, "competition": 0.3},
-        "double wall vacuum": {"search_volume": 3000, "competition": 0.2},
-        "straw lid": {"search_volume": 15000, "competition": 0.35},
-        "stainless steel": {"search_volume": 200000, "competition": 0.9},
-        "bpa free": {"search_volume": 10000, "competition": 0.5},
-        "vacuum insulation": {"search_volume": 1500, "competition": 0.2},
-        "double wall": {"search_volume": 4000, "competition": 0.25}
+        "water bottle": {
+          "search_volume": 450000,
+          "competition": 0.95
+        },
+        "insulated water bottle": {
+          "search_volume": 120000,
+          "competition": 0.8
+        },
+        "water bottle with straw": {
+          "search_volume": 90000,
+          "competition": 0.7
+        },
+        "water bottle insulated": {
+          "search_volume": 20000,
+          "competition": 0.75
+        },
+        "water bottles for kids": {
+          "search_volume": 60000,
+          "competition": 0.65
+        },
+        "water bottle 32 oz": {
+          "search_volume": 30000,
+          "competition": 0.5
+        },
+        "insulated water bottle with straw": {
+          "search_volume": 25000,
+          "competition": 0.45
+        },
+        "insulated water bottle stainless steel": {
+          "search_volume": 12000,
+          "competition": 0.4
+        },
+        "leak proof": {
+          "search_volume": 8000,
+          "competition": 0.3
+        },
+        "double wall vacuum": {
+          "search_volume": 3000,
+          "competition": 0.2
+        },
+        "straw lid": {
+          "search_volume": 15000,
+          "competition": 0.35
+        },
+        "stainless steel": {
+          "search_volume": 200000,
+          "competition": 0.9
+        },
+        "bpa free": {
+          "search_volume": 10000,
+          "competition": 0.5
+        },
+        "vacuum insulation": {
+          "search_volume": 1500,
+          "competition": 0.2
+        },
+        "double wall": {
+          "search_volume": 4000,
+          "competition": 0.25
+        },
+        "kids water bottle": {
+          "search_volume": 35000,
+          "competition": 0.6
+        },
+        "bottle water": {
+          "search_volume": 70000,
+          "competition": 0.9
+        },
+        "hydra water bottle": {
+          "search_volume": 8000,
+          "competition": 0.4
+        }
       }
     },
     "reviews": {
       "US": {
         "B0COMP0001": [
-          {"rating": 5, "text": "Ice lasts all day."},
-          {"rating": 2, "text": "Straw lid leaked in my bag."}
+          {
+            "rating": 5,
+            "text": "Ice lasts all day."
+          },
+          {
+            "rating": 2,
+            "text": "Straw lid leaked in my bag."
+          },
+          {
+            "rating": 1,
+            "text": "Lid leaks if it tips over."
+          }
         ],
-        "B0COMP0002": [{"rating": 4, "text": "Heavy but tough."}]
+        "B0COMP0002": [
+          {
+            "rating": 4,
+            "text": "Heavy but tough."
+          },
+          {
+            "rating": 5,
+            "text": "Keeps ice for 24 hours, even in the car."
+          },
+          {
+            "rating": 2,
+            "text": "Leaked all over my backpack."
+          }
+        ],
+        "B0COMP0003": [
+          {
+            "rating": 5,
+            "text": "Kids love the straw."
+          },
+          {
+            "rating": 5,
+            "text": "Still cold at the end of the school day."
+          }
+        ]
+      }
+    },
+    "review_themes": {
+      "extractor": "fixture-precomputed",
+      "extractor_version": "themes-fixture-v1",
+      "markets": {
+        "US": [
+          {
+            "theme": "lid leaks",
+            "polarity": "negative",
+            "reviews": [
+              "B0COMP0001/1",
+              "B0COMP0001/2",
+              "B0COMP0002/2"
+            ],
+            "terms": [
+              "leak proof",
+              "leak",
+              "lid"
+            ],
+            "rationale": "Three reviews across two products describe the lid leaking."
+          },
+          {
+            "theme": "keeps drinks cold all day",
+            "polarity": "positive",
+            "reviews": [
+              "B0COMP0001/0",
+              "B0COMP0002/1",
+              "B0COMP0003/1"
+            ],
+            "terms": [
+              "keeps drinks cold",
+              "cold",
+              "insulation"
+            ],
+            "rationale": "Reviews praise ice or cold drinks lasting a full day."
+          },
+          {
+            "theme": "heavy",
+            "polarity": "negative",
+            "reviews": [
+              "B0COMP0002/0"
+            ],
+            "terms": [
+              "lightweight",
+              "heavy"
+            ],
+            "rationale": "One review mentions weight."
+          }
+        ]
+      }
+    },
+    "judgments": {
+      "model": "fixture-judge-1",
+      "prompt_versions": {
+        "relevance": "relevance-fixture-v1",
+        "intent": "intent-fixture-v1",
+        "entity": "entity-fixture-v1",
+        "equivalence": "equivalence-fixture-v1"
+      },
+      "markets": {
+        "US": {
+          "relevance": {
+            "insulated water bottle": {
+              "score": 0.95,
+              "confidence": 0.9,
+              "rationale": "Exactly the product type and its key attribute."
+            },
+            "water bottle": {
+              "score": 0.85,
+              "confidence": 0.9,
+              "rationale": "The product type, unqualified."
+            },
+            "water bottle 32 oz": {
+              "score": 0.8,
+              "confidence": 0.85,
+              "rationale": "Matches the product's 32 oz size."
+            },
+            "insulated water bottle with straw": {
+              "score": 0.4,
+              "confidence": 0.8,
+              "rationale": "The product has a lid, not a straw."
+            },
+            "water bottle with straw": {
+              "score": 0.3,
+              "confidence": 0.8,
+              "rationale": "Straw bottles are a different variant."
+            },
+            "water bottles for kids": {
+              "score": 0.35,
+              "confidence": 0.7,
+              "rationale": "Not positioned as a kids' bottle."
+            },
+            "double wall vacuum": {
+              "score": 0.8,
+              "confidence": 0.8,
+              "rationale": "Describes the product's insulation."
+            },
+            "leak proof": {
+              "score": 0.75,
+              "confidence": 0.8,
+              "rationale": "The listing claims a leak proof lid."
+            },
+            "straw lid": {
+              "score": 0.2,
+              "confidence": 0.8,
+              "rationale": "The product has no straw lid."
+            },
+            "stainless steel": {
+              "score": 0.55,
+              "confidence": 0.7,
+              "rationale": "Material match, but very generic."
+            },
+            "bottle water": {
+              "score": 0.05,
+              "confidence": 0.95,
+              "rationale": "Bottled drinking water, not a container."
+            },
+            "hydra water bottle": {
+              "score": 0.3,
+              "confidence": 0.8,
+              "rationale": "A competitor's brand query."
+            }
+          },
+          "intent": {
+            "insulated water bottle": {
+              "label": "transactional",
+              "score": 0.9,
+              "confidence": 0.85,
+              "rationale": "Ready-to-buy product query."
+            },
+            "water bottle": {
+              "label": "commercial_investigation",
+              "score": 0.6,
+              "confidence": 0.8,
+              "rationale": "Broad browsing query."
+            },
+            "water bottle 32 oz": {
+              "label": "transactional",
+              "score": 0.85,
+              "confidence": 0.8,
+              "rationale": "Size-specific purchase query."
+            },
+            "leak proof": {
+              "label": "commercial_investigation",
+              "score": 0.5,
+              "confidence": 0.7,
+              "rationale": "Attribute research."
+            },
+            "bottle water": {
+              "label": "transactional",
+              "score": 0.8,
+              "confidence": 0.8,
+              "rationale": "Buying bottled water."
+            }
+          },
+          "entity": {
+            "hydra water bottle": {
+              "label": "brand",
+              "entity": "Hydra",
+              "confidence": 0.95,
+              "rationale": "Hydra is a competitor brand."
+            },
+            "water bottle": {
+              "label": "none",
+              "entity": null,
+              "confidence": 0.95,
+              "rationale": "Generic product phrase."
+            }
+          },
+          "equivalence": {
+            "kids water bottle || water bottles for kids": {
+              "equivalent": true,
+              "confidence": 0.9,
+              "rationale": "Both mean a water bottle intended for children."
+            },
+            "bottle water || water bottle": {
+              "equivalent": false,
+              "confidence": 0.95,
+              "rationale": "Bottled drinking water versus a reusable container."
+            }
+          }
+        }
       }
     }
   }
