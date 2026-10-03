@@ -1,0 +1,67 @@
+# physical-product: generic Seller Central catalog item. Category-specific
+# recipes (e.g. apparel, kitchen) should extend this one.
+
+id = "physical-product"
+extends = "amazon-base"
+version = "0.1.0"
+description = "Generic physical product sold through Seller Central."
+
+[sources.amazon-bullet-guidance]
+title = "Amazon Seller Central: key product features (bullet points) guidance"
+as_of = 2024-01-01
+status = "unverified"
+marketplace = "US"
+note = "Five bullets is standard. A 500-character per-bullet cap is common but category templates vary; Amazon style guidance favors shorter bullets."
+
+[sources.amazon-search-terms-guidance]
+title = "Amazon Seller Central: using search terms effectively"
+as_of = 2024-01-01
+status = "unverified"
+marketplace = "US"
+note = "US generic keywords are limited to 250 bytes. Published guidance on whether spaces count has varied, so atlas counts them. It also advises against repeating words already in the title."
+
+[fields.brand]
+kind = "text"
+
+[fields.bullets]
+kind = "list"
+max_count = 5
+item_max_chars = 500
+source = "amazon-bullet-guidance"
+
+[fields.search_terms]
+kind = "text"
+max_bytes = 250
+source = "amazon-search-terms-guidance"
+description = "Backend generic keywords (hidden from shoppers)."
+
+[backend]
+field = "search_terms"
+mode = "bytes"
+count_spaces = true
+stopwords = ["a", "an", "and", "by", "for", "of", "or", "the", "to", "with"]
+source = "amazon-search-terms-guidance"
+
+[rules.promotional_terms]
+# Inherits terms and severity from amazon-base, widened to bullets.
+fields = ["title", "bullets"]
+
+[rules.backend_redundancy]
+check = "backend_redundancy"
+visible_fields = ["title", "bullets", "brand"]
+severity = "warning"
+source = "amazon-search-terms-guidance"
+description = "Backend words that repeat visible text, or each other, waste the byte budget."
+
+[scoring.coverage]
+bullets = 0.6
+search_terms = 0.3
+
+[research]
+priorities = [
+  "competitor_titles",
+  "competitor_bullets",
+  "search_term_demand",
+  "review_themes",
+  "category_attributes",
+]
