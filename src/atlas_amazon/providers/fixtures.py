@@ -37,7 +37,7 @@ from atlas_amazon.reviews.themes import review_theme_evidence
 
 _SECTIONS = ("catalog", "keyword_metrics", "suggestions", "reviews")
 # Semantic sections: {<metadata>..., "markets": {"US": ...}}
-_SEMANTIC = ("judgments", "review_themes")
+_SEMANTIC = ("judgments", "review_themes", "human_judgments")
 _TOP_KEYS = frozenset({"provider", "retrieved_at", *_SECTIONS, *_SEMANTIC})
 
 

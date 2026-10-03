@@ -46,7 +46,7 @@ def test_scenario_invariants(results, name):
             # A signal is heuristic exactly when its source says so; judgments cite evidence.
             assert c.heuristic == (source == "heuristic"), (name, s.keyword, c.signal)
             if c.signal in ("relevance", "intent"):
-                assert source in ("judgment", "heuristic")
+                assert source in ("judgment", "human", "heuristic")
             else:
                 assert source == "evidence"
         for c in s.contributions:

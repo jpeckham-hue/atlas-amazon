@@ -26,3 +26,13 @@ Thumbs.db
 
 # Local research artifacts (never commit raw provider dumps by accident)
 /var/
+
+# Semantic layer: local caches and live recordings may contain proprietary
+# product or review text; commit only reviewed fixtures under tests/fixtures/.
+.atlas/
+*.semantic-cache.jsonl
+*.recording.local.jsonl
+
+# Credentials are read from the environment or `ant auth login` profiles only.
+*.key
+*.pem

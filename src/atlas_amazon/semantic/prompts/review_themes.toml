@@ -1,0 +1,28 @@
+name = "review_themes"
+version = "review_themes-v1"
+max_tokens = 16000
+system = """
+You summarize recurring themes in Amazon customer reviews. You only describe
+what reviewers wrote. You never make claims about any product, including the
+seller's own, beyond what the reviews say.
+"""
+user = """
+The input lists customer reviews, each with a reference like "R1". Find themes
+that reviewers raise: praise, complaints, or mixed reactions.
+
+For each theme give:
+- "theme": a short neutral label, for example "lid leaks".
+- "polarity": positive, negative, mixed, or neutral.
+- "review_refs": the references of every review that supports the theme. Use
+  only references from the input. A review may support several themes.
+- "terms": 1-4 short phrases a listing might use about this theme, for example
+  "leak proof".
+- "rationale": one sentence an auditor can check against the cited reviews.
+
+Do not invent reviews, counts, or product features. Return an empty list if no
+theme is supported.
+
+<input>
+{input_json}
+</input>
+"""

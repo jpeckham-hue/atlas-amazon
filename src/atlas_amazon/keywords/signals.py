@@ -52,6 +52,7 @@ class SignalSource(StrEnum):
     EVIDENCE = "evidence"  # measured provider data (metrics, catalog)
     JUDGMENT = "judgment"  # a recorded semantic judgment (model or rule)
     HEURISTIC = "heuristic"  # deterministic placeholder; no evidence
+    HUMAN = "human"  # a human reviewer's judgment (overrides model judgments)
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,7 +275,7 @@ def derive_signals(
             if judgment is not None:
                 values[name] = SignalValue(judgment.score, (judgment.evidence_id,))
                 notes[name] = _judged_note(judgment, phrase, family)
-                sources[name] = SignalSource.JUDGMENT
+                sources[name] = SignalSource.HUMAN if judgment.is_human else SignalSource.JUDGMENT
                 if kind is JudgmentType.INTENT:
                     intent_label = judgment.label
             else:

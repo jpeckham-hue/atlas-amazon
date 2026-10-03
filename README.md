@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.4a: offline semantic layer.** `ResearchRun` answers "which
+> Status: **v0.4b: live semantic providers.** `ResearchRun` answers "which
 > keywords matter, what am I missing, why, and what should change?" for a
 > book or a product listing, from fixture data, with every number traced to
 > evidence. New in v0.4a:
@@ -20,8 +20,14 @@ into its parts.
 >   LLM yet;
 > * review themes: praise, complaints and conditional listing opportunities.
 >
-> Every relevance and intent value is marked as either a judgment or a
-> heuristic. Also in place:
+> Every relevance and intent value is marked as a model judgment, a human
+> override, or a heuristic.
+>
+> New in v0.4b: LLM judgment and review-theme providers on the official
+> Anthropic SDK (optional, opt-in), using versioned prompts and structured
+> output. Also: a persistent cache, record/replay so CI stays offline,
+> hard call and cost limits, human overrides, and per-type evaluation.
+> Also in place:
 > * recipe loading, with rules sourced to official Amazon and KDP pages;
 > * keyword normalization, coverage and decomposable scoring;
 > * backend keyword packing and the listing audit;
@@ -183,6 +189,52 @@ check = validate_proposal(proposal, recipe=recipe, base=listing, evidence=store)
 print("valid:", check.valid, [f.rule_id for f in check.blocking_findings])
 ```
 
+### Live semantic judgments (v0.4b, opt-in)
+
+Live calls are **off by default** and never happen in tests. To run one:
+
+```bash
+pip install -e ".[llm]"
+```
+
+Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile;
+atlas never reads or stores them. Enable live calls for the session with
+`ATLAS_ALLOW_LIVE_LLM=1`, then:
+
+```py
+from atlas_amazon.research import load_scenario
+from atlas_amazon.semantic import (
+    AnthropicTransport,
+    LLMJudgmentProvider,
+    LLMReviewThemeProvider,
+    RecordingTransport,
+    SemanticBudget,
+    SemanticCache,
+    UsageLedger,
+)
+
+ledger = UsageLedger(budget=SemanticBudget(max_live_calls=80, max_cost_usd=2.00))
+cache = SemanticCache(".atlas/semantic-cache.jsonl")
+live = RecordingTransport(AnthropicTransport(), ".atlas/book.recording.local.jsonl")
+result = (
+    load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json")
+    .with_providers(
+        judgments=LLMJudgmentProvider(live, ledger=ledger, cache=cache),
+        review_themes=LLMReviewThemeProvider(live, ledger=ledger, cache=cache),
+    )
+    .run()
+)
+print(result.semantic_usage)
+```
+
+Replay that recording later with `ReplayTransport(path)`; it makes no
+network calls. Compare model and reference judgments per type with
+`evaluate_judgments`. The committed recordings in
+`tests/fixtures/recordings/` are **synthetic** (scripted). See
+[docs/architecture.md](docs/architecture.md#live-semantic-providers-v04b)
+for caching, prompt versioning, cost controls, human overrides and
+evaluation.
+
 ## Layout
 
 ```
@@ -197,6 +249,8 @@ src/atlas_amazon/
   planner/    Proposal + validate_proposal, backend plan, gap recommendations
   judgments/  JudgmentRequest, judgment Evidence contract, parse_judgment
   reviews/    review-theme Evidence, summaries, listing opportunities
+  semantic/   LLM providers, prompts, cache, record/replay, usage limits,
+              human overrides, evaluation
   research/   ResearchRun orchestration, priority tasks, scenarios
   report/     report dict / JSON / Markdown (formatting only)
 ```

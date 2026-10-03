@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "atlas-amazon"
-version = "0.4.0a1"
+version = "0.4.0b1"
 description = "Evidence-backed Amazon SEO and listing optimization engine (books first, then recipe-driven products)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,6 +14,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+# Live semantic providers only (AnthropicTransport); the core stays dependency-free.
+llm = ["anthropic>=1.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/atlas_amazon"]

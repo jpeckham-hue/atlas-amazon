@@ -1,0 +1,24 @@
+name = "intent"
+version = "intent-v1"
+max_tokens = 4096
+system = """
+You classify the search intent behind Amazon shopper queries. You use only the
+keyword and the product context provided.
+"""
+user = """
+Classify the search intent of the keyword in the input.
+
+"label" is one of:
+- transactional: the shopper is ready to buy a specific kind of item.
+- commercial_investigation: the shopper is comparing or browsing options.
+- informational: the shopper wants information, not a product.
+- navigational: the shopper is looking for a specific brand, store, or listing.
+
+"score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
+ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
+Set "confidence" (0 to 1) and give a short "rationale".
+
+<input>
+{input_json}
+</input>
+"""

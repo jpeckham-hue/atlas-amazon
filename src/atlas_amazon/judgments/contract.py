@@ -60,6 +60,11 @@ ENTITY_LABELS = ("none", "brand", "author", "trademark", "product_line", "other"
 # Entities that must not appear in backend keywords (other brands, other authors, marks).
 BLOCKING_ENTITY_LABELS = frozenset({"brand", "author", "trademark"})
 
+# Judgments recorded by a person reviewing the run. Same evidence model as any
+# other judgment; `model` is "human:<reviewer>". They override model judgments.
+HUMAN_PROVIDER = "human"
+HUMAN_PROMPT_VERSION = "human-review-v1"
+
 _PAYLOAD_KEYS = frozenset(
     {
         "judgment_type",
@@ -191,6 +196,13 @@ class Judgment:
     rationale: str
     provider: str
     judged_at: datetime
+    # Optional live-call metadata (request hash, response id, served model,
+    # usage, and the ID of the semantic_call evidence holding the full exchange).
+    call: Mapping[str, Any] | None = None
+
+    @property
+    def is_human(self) -> bool:
+        return self.provider == HUMAN_PROVIDER
 
     @property
     def subject(self) -> str:
@@ -218,8 +230,12 @@ def judgment_evidence(
     judged_at: datetime,
     run_id: str | None = None,
     source_url: str | None = None,
+    call: Mapping[str, Any] | None = None,
 ) -> Evidence:
-    """Build judgment Evidence. Invalid results are rejected at creation time."""
+    """Build judgment Evidence. Invalid results are rejected at creation time.
+
+    `call` attaches live-call metadata. It is the only optional payload key.
+    """
     _check_result(request.type, freeze(result, "result"))
     if confidence is not None and not _unit(confidence):
         raise JudgmentError("confidence must be in [0, 1] or None")
@@ -240,6 +256,10 @@ def judgment_evidence(
         "prompt_version": prompt_version,
         "rationale": rationale,
     }
+    if call is not None:
+        if not isinstance(call, Mapping):
+            raise JudgmentError("call metadata must be an object")
+        payload["call"] = call
     return make_evidence(
         provider=provider,
         kind=EvidenceKind.JUDGMENT,
@@ -256,8 +276,10 @@ def parse_judgment(evidence: Evidence) -> Judgment:
     if evidence.kind != EvidenceKind.JUDGMENT:
         raise JudgmentError(f"expected judgment evidence, got {evidence.kind!r}")
     p = evidence.payload
-    if set(p) != _PAYLOAD_KEYS:
+    if set(p) - {"call"} != _PAYLOAD_KEYS:
         raise JudgmentError(f"judgment payload keys mismatch: {sorted(p)}")
+    if "call" in p and not isinstance(p["call"], Mapping):
+        raise JudgmentError("call metadata must be an object")
     try:
         kind = JudgmentType(p["judgment_type"])
     except ValueError:
@@ -285,4 +307,5 @@ def parse_judgment(evidence: Evidence) -> Judgment:
         rationale=p["rationale"],
         provider=evidence.provider,
         judged_at=evidence.retrieved_at,
+        call=p.get("call"),
     )

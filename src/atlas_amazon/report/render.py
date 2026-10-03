@@ -16,7 +16,7 @@ from atlas_amazon.models import Finding
 from atlas_amazon.research.run import ResearchResult
 from atlas_amazon.reviews.themes import ThemeInsight
 
-SOURCE_MARK = {"evidence": "", "judgment": " J", "heuristic": " H"}
+SOURCE_MARK = {"evidence": "", "judgment": " J", "human": " R", "heuristic": " H"}
 
 
 def _finding(f: Finding) -> dict[str, Any]:
@@ -183,6 +183,60 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             }
             for j in result.judgments
         ],
+        "judgment_resolutions": [
+            {
+                "type": r.type.value,
+                "subject": r.subject,
+                "model": None
+                if r.model is None
+                else {
+                    "evidence_id": r.model.evidence_id,
+                    "result": thaw(r.model.result),
+                    "model": r.model.model,
+                    "rationale": r.model.rationale,
+                },
+                "human": None
+                if r.human is None
+                else {
+                    "evidence_id": r.human.evidence_id,
+                    "result": thaw(r.human.result),
+                    "model": r.human.model,
+                    "rationale": r.human.rationale,
+                },
+                "used": "human" if r.human is not None else "model",
+                "used_evidence_id": r.used.evidence_id,
+            }
+            for r in result.judgment_resolutions
+            if r.human is not None
+        ],
+        "semantic_usage": None
+        if result.semantic_usage is None
+        else {
+            "live_calls": result.semantic_usage.live_calls,
+            "estimated_cost_usd": result.semantic_usage.estimated_cost_usd,
+            "pricing_as_of": result.semantic_usage.pricing_as_of,
+            "budget": {
+                "max_live_calls": result.semantic_usage.budget.max_live_calls,
+                "max_cost_usd": result.semantic_usage.budget.max_cost_usd,
+            },
+            "halts": list(result.semantic_usage.halts),
+            "groups": [
+                {
+                    "provider": g.provider,
+                    "model": g.model,
+                    "requests": g.requests,
+                    "live_calls": g.live_calls,
+                    "replayed": g.replayed,
+                    "cache_hits": g.cache_hits,
+                    "cache_misses": g.cache_misses,
+                    "failures": dict(g.failures),
+                    "input_tokens": g.input_tokens,
+                    "output_tokens": g.output_tokens,
+                    "estimated_cost_usd": g.estimated_cost_usd,
+                }
+                for g in result.semantic_usage.groups
+            ],
+        },
         "invalid_judgments": [{"evidence_id": i, "reason": r} for i, r in result.invalid_judgments],
         "entity_flags": [
             {
@@ -457,8 +511,9 @@ def render_markdown(result: ResearchResult) -> str:
             )
         w("")
         w(
-            "Cells show weighted contributions. J = semantic judgment (evidence-backed); "
-            "H = heuristic placeholder (no evidence); unmarked = measured evidence."
+            "Cells show weighted contributions. J = model judgment; R = human reviewer "
+            "judgment (overrides the model); H = heuristic placeholder (no evidence); "
+            "unmarked = measured evidence."
         )
     w("")
 
@@ -511,6 +566,66 @@ def render_markdown(result: ResearchResult) -> str:
             )
         for bad in d["invalid_judgments"]:
             w(f"- Invalid judgment `{bad['evidence_id']}` (ignored): {bad['reason']}")
+        w("")
+        if d["judgment_resolutions"]:
+            w("### Human overrides")
+            w("")
+            w("| Type | Subject | Model judgment | Human judgment | Used |")
+            w("|---|---|---|---|---|")
+            for r in d["judgment_resolutions"]:
+                model = (
+                    "none"
+                    if r["model"] is None
+                    else f"{r['model']['result']} ({r['model']['model']}): "
+                    f"{r['model']['rationale']} `{r['model']['evidence_id']}`"
+                )
+                human = (
+                    f"{r['human']['result']} ({r['human']['model']}): "
+                    f"{r['human']['rationale']} `{r['human']['evidence_id']}`"
+                )
+                w(
+                    f"| {r['type']} | {r['subject']} | {model} | {human} | "
+                    f"{r['used']} `{r['used_evidence_id']}` |"
+                )
+            w("")
+
+    usage = d["semantic_usage"]
+    if usage is not None:
+        w("## Semantic usage")
+        w("")
+        cost = usage["estimated_cost_usd"]
+        cost_text = "unknown (unpriced model)" if cost is None else f"${cost:.4f}"
+        limits = usage["budget"]
+        max_calls = limits["max_live_calls"]
+        max_cost = limits["max_cost_usd"]
+        w(
+            f"{usage['live_calls']} live calls, estimated cost {cost_text} "
+            f"(pricing as of {usage['pricing_as_of']}). Limits: max live calls "
+            f"{max_calls if max_calls is not None else 'none'}, max cost "
+            f"{'$' + format(max_cost, 'g') if max_cost is not None else 'none'}."
+        )
+        w("")
+        w(
+            "| Provider / model | Requests | Live | Replayed | Cache hits | Input tok | Output tok "
+            "| Est. cost | Failures |"
+        )
+        w("|---|---|---|---|---|---|---|---|---|")
+        for g in usage["groups"]:
+            gcost = (
+                "-"
+                if not g["live_calls"]
+                else "unknown"
+                if g["estimated_cost_usd"] is None
+                else f"${g['estimated_cost_usd']:.4f}"
+            )
+            fails = ", ".join(f"{k} {n}" for k, n in g["failures"].items()) or "none"
+            w(
+                f"| {g['provider']} / {g['model']} | {g['requests']} | {g['live_calls']} | "
+                f"{g['replayed']} | {g['cache_hits']} | {g['input_tokens']} | "
+                f"{g['output_tokens']} | {gcost} | {fails} |"
+            )
+        for halt in usage["halts"]:
+            w(f"- Limit reached, further live calls skipped: {halt}")
         w("")
 
     themes = d["review_themes"]

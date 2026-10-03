@@ -80,6 +80,8 @@ from atlas_amazon.providers.base import (
 from atlas_amazon.recipes.loader import load_recipe
 from atlas_amazon.research.tasks import RunContext, TaskRecord, TaskStatus, run_priority
 from atlas_amazon.reviews.themes import ThemeReport, summarize_review_themes
+from atlas_amazon.semantic.human import JudgmentResolution, resolve_judgments
+from atlas_amazon.semantic.usage import SemanticUsageSummary, UsageLedger
 
 KEYWORD_JUDGMENTS = (JudgmentType.RELEVANCE, JudgmentType.INTENT, JudgmentType.ENTITY)
 
@@ -92,6 +94,7 @@ class ResearchProviders:
     reviews: ReviewProvider | None = None
     review_themes: ReviewThemeProvider | None = None
     judgments: JudgmentProvider | None = None
+    human_judgments: JudgmentProvider | None = None  # reviewer overrides (provider "human")
 
     def names(self) -> dict[str, str | None]:
         return {
@@ -103,6 +106,7 @@ class ResearchProviders:
                 ("reviews", self.reviews),
                 ("review_themes", self.review_themes),
                 ("judgments", self.judgments),
+                ("human_judgments", self.human_judgments),
             )
         }
 
@@ -185,6 +189,8 @@ class ResearchResult:
     proposals: tuple[Proposal, ...]
     validations: tuple[ProposalValidation, ...]
     review_themes: ThemeReport | None
+    judgment_resolutions: tuple[JudgmentResolution, ...] = ()
+    semantic_usage: SemanticUsageSummary | None = None
 
     @property
     def unscored(self) -> tuple[SignalDerivation, ...]:
@@ -242,16 +248,30 @@ class ResearchRun:
     def _judge(
         self, ctx: RunContext, task: str, requests: Sequence[JudgmentRequest]
     ) -> tuple[TaskRecord, list[Judgment], list[tuple[str, str]]]:
-        provider = self.providers.judgments
-        assert provider is not None
-        returned = provider.judge(requests, marketplace=ctx.marketplace, run_id=self.run_id)
+        """Ask the model provider and the human provider; store everything; validate.
+
+        `semantic_call` records (full request/response) are stored as lineage
+        but are not judgments. Every judgment record is parsed; unparseable or
+        unrequested ones are reported as invalid and never used.
+        """
+        sources = [
+            p for p in (self.providers.judgments, self.providers.human_judgments) if p is not None
+        ]
+        returned = []
+        for provider in sources:
+            returned += provider.judge(requests, marketplace=ctx.marketplace, run_id=self.run_id)
         ids, new, reused = ctx.store_all(returned)  # stored before use, valid or not
         wanted = {r.input_hash for r in requests}
         valid: list[Judgment] = []
         invalid: list[tuple[str, str]] = []
+        calls = 0
         for evidence_id in ids:
+            evidence = self.store.get(evidence_id)
+            if evidence.kind == EvidenceKind.SEMANTIC_CALL:
+                calls += 1
+                continue
             try:
-                judgment = parse_judgment(self.store.get(evidence_id))
+                judgment = parse_judgment(evidence)
             except JudgmentError as exc:
                 invalid.append((evidence_id, str(exc)))
                 continue
@@ -259,16 +279,44 @@ class ResearchRun:
                 invalid.append((evidence_id, "answers a request that was not made"))
                 continue
             valid.append(judgment)
-        note = f"{len(requests)} requested, {len(valid)} valid judgments"
+        humans = sum(1 for j in valid if j.is_human)
+        note = f"{len(requests)} requested, {len(valid) - humans} valid model judgments"
+        if humans:
+            note += f", {humans} human"
+        if calls:
+            note += f", {calls} recorded LLM exchanges"
         if invalid:
             note += f", {len(invalid)} invalid"
         unanswered = len(wanted) - len({j.input_hash for j in valid})
         if unanswered:
             note += f", {unanswered} unanswered (fallbacks apply)"
         record = TaskRecord(
-            "semantic", task, TaskStatus.EXECUTED, (provider.name,), ids, new, reused, note
+            "semantic",
+            task,
+            TaskStatus.EXECUTED,
+            tuple(p.name for p in sources),
+            ids,
+            new,
+            reused,
+            note,
         )
         return record, valid, invalid
+
+    def _usage_summary(self) -> SemanticUsageSummary | None:
+        ledgers = []
+        for provider in (self.providers.judgments, self.providers.review_themes):
+            ledger = getattr(provider, "usage", None)
+            if isinstance(ledger, UsageLedger) and all(ledger is not x for x in ledgers):
+                ledgers.append(ledger)
+        if not ledgers:
+            return None
+        summaries = [ledger.summary(self.run_id) for ledger in ledgers]
+        return SemanticUsageSummary(
+            groups=tuple(g for summary in summaries for g in summary.groups),
+            halts=tuple(h for summary in summaries for h in summary.halts),
+            budget=summaries[0].budget,
+            pricing_as_of=summaries[0].pricing_as_of,
+        )
 
     # -- workflow ---------------------------------------------------------------
 
@@ -324,7 +372,7 @@ class ResearchRun:
         judgments: list[Judgment] = []
         invalid: list[tuple[str, str]] = []
         semantic: list[TaskRecord] = []
-        if self.providers.judgments is None:
+        if self.providers.judgments is None and self.providers.human_judgments is None:
             semantic.append(
                 TaskRecord(
                     "semantic",
@@ -344,7 +392,8 @@ class ResearchRun:
                 semantic.append(record)
                 judgments += valid
                 invalid += bad
-                grouping = group([j for j in valid if j.type is JudgmentType.EQUIVALENCE])
+                used_eq = [r.used for r in resolve_judgments(valid)]
+                grouping = group([j for j in used_eq if j.type is JudgmentType.EQUIVALENCE])
             else:
                 semantic.append(
                     TaskRecord(
@@ -367,12 +416,15 @@ class ResearchRun:
                 judgments += valid
                 invalid += bad
 
+        # Human judgments override model judgments; both are kept.
+        resolutions = resolve_judgments(judgments)
+        used = [r.used for r in resolutions]
         derivations = derive_signals(
             grouping.families,
             metrics=metrics,
             competitors=catalog,
             reference_terms=reference_terms_for(product.title, seeds),
-            judgments=judgments,
+            judgments=used,
         )
         ranked = tuple(
             rank_keywords([d.signals for d in derivations if d.signals], recipe.keyword_weights)
@@ -382,7 +434,7 @@ class ResearchRun:
         by_canonical = {f.canonical: f for f in grouping.families}
         entity_flags = tuple(
             EntityFlag(j.input["keyword"], j.label, j.result["entity"], j.evidence_id)
-            for j in judgments
+            for j in used
             if j.type is JudgmentType.ENTITY
             and j.label in BLOCKING_ENTITY_LABELS
             and j.input["keyword"] in by_canonical
@@ -432,7 +484,10 @@ class ResearchRun:
         )
 
         judgment_evidence = ctx.stored(EvidenceKind.JUDGMENT)
-        all_evidence = suggestions + catalog + metrics + reviews + themes + judgment_evidence
+        call_evidence = ctx.stored(EvidenceKind.SEMANTIC_CALL)
+        all_evidence = (
+            suggestions + catalog + metrics + reviews + themes + judgment_evidence + call_evidence
+        )
         metric_keys = {keyword_key(str(m.payload.get("keyword", m.subject or ""))) for m in metrics}
         summary = EvidenceSummary(
             total=len(all_evidence),
@@ -504,4 +559,6 @@ class ResearchRun:
             proposals=proposals,
             validations=validations,
             review_themes=theme_report,
+            judgment_resolutions=resolutions,
+            semantic_usage=self._usage_summary(),
         )

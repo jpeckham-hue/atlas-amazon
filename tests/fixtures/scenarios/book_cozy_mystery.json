@@ -38,7 +38,8 @@
     "suggestions",
     "reviews",
     "review_themes",
-    "judgments"
+    "judgments",
+    "human_judgments"
   ],
   "fixture": {
     "provider": "fixture",
@@ -363,6 +364,26 @@
               "equivalent": true,
               "confidence": 0.85,
               "rationale": "Same request: cozy mystery books, with the genre word moved."
+            }
+          }
+        }
+      }
+    },
+    "human_judgments": {
+      "reviewer": "editor",
+      "decided_at": "2026-10-03T11:00:00+00:00",
+      "markets": {
+        "US": {
+          "relevance": {
+            "cozy mystery series": {
+              "score": 0.9,
+              "confidence": 1.0,
+              "rationale": "The author confirmed this is book 1 of the Harbor Mysteries series."
+            },
+            "cozy mystery with cats": {
+              "score": 0.1,
+              "confidence": 1.0,
+              "rationale": "Checked against the manuscript: no cat characters appear."
             }
           }
         }

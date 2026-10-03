@@ -218,6 +218,7 @@ class TestOrchestration:
             "reviews": None,
             "review_themes": None,
             "judgments": None,
+            "human_judgments": None,
         }
 
     def test_no_competitors_is_no_input(self):

@@ -1,0 +1,29 @@
+name = "entity"
+version = "entity-v1"
+max_tokens = 4096
+system = """
+You detect named entities in Amazon search keywords that a seller may not use in
+their own listing or backend keywords: other companies' brands, other authors'
+names, trademarks and program names.
+"""
+user = """
+Does the keyword in the input name an entity?
+
+"label" is one of:
+- none: generic words only.
+- brand: a company or product brand.
+- author: a person's name used as an author reference.
+- trademark: a trademarked term or program name (for example a subscription
+  program) that is not a brand of a physical product.
+- product_line: a named product line or series of another company.
+- other: some other proper name.
+
+Put the entity text in "entity", or an empty string when the label is "none".
+The product in the context is the seller's own; its brand or title words are not
+"other companies'" entities. Set "confidence" (0 to 1) and give a short
+"rationale".
+
+<input>
+{input_json}
+</input>
+"""

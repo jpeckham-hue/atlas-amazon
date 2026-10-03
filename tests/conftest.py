@@ -28,3 +28,12 @@ def sample_evidence(n: int = 0, **overrides):
 @pytest.fixture
 def sample_fixture_path():
     return FIXTURES / "sample_us.json"
+
+
+@pytest.fixture(autouse=True)
+def _no_live_llm_calls(monkeypatch):
+    """Tests never make live LLM calls: the live flag is cleared and the SDK is unimportable."""
+    import sys
+
+    monkeypatch.delenv("ATLAS_ALLOW_LIVE_LLM", raising=False)
+    monkeypatch.setitem(sys.modules, "anthropic", None)  # `import anthropic` -> ImportError

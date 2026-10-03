@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -37,6 +37,7 @@ from atlas_amazon.providers.fixtures import (
     FixtureSuggestionProvider,
 )
 from atlas_amazon.research.run import ResearchConfig, ResearchProviders, ResearchResult, ResearchRun
+from atlas_amazon.semantic.human import HumanJudgmentProvider
 
 _ROLES = {
     "catalog": FixtureCatalogProvider,
@@ -45,6 +46,7 @@ _ROLES = {
     "reviews": FixtureReviewProvider,
     "review_themes": FixtureReviewThemeProvider,
     "judgments": FixtureJudgmentProvider,
+    "human_judgments": lambda fixture: HumanJudgmentProvider(fixture.semantic["human_judgments"]),
 }
 _KEYS = frozenset({"name", "run_id", "started_at", "product", "listing", "providers", "fixture"})
 
@@ -57,6 +59,10 @@ class Scenario:
     product: ProductInput
     listing: Listing
     providers: ResearchProviders
+
+    def with_providers(self, **roles) -> Scenario:
+        """A copy with some provider roles replaced (e.g. judgments=LLMJudgmentProvider(...))."""
+        return replace(self, providers=replace(self.providers, **roles))
 
     def run(
         self, store: EvidenceStore | None = None, config: ResearchConfig | None = None

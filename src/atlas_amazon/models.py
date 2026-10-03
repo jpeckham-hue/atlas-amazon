@@ -65,6 +65,7 @@ class EvidenceKind(StrEnum):
     REVIEW_SAMPLE = "review_sample"
     REVIEW_THEME = "review_theme"
     JUDGMENT = "judgment"
+    SEMANTIC_CALL = "semantic_call"
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,9 +1,9 @@
 # Research report: Acme Insulated Water Bottle 32 oz
 
-- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.4.0a1)
+- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.4.0b1)
 - Recipe: `physical-product` 0.2.0 (amazon-base > physical-product), marketplace US
 - Seeds (seed_keywords attribute): water bottle, insulated water bottle
-- Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture
+- Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=none
 - Keyword families: on
 - Evidence fingerprint: `9217353f3446b1b2`
 
@@ -16,8 +16,8 @@
 | search_term_demand | search_demand | executed | 20 / 0 | suggestions for 2 seeds; metrics requested for 21 candidates |
 | review_themes | competitor_reviews | executed | 11 / 0 | reviews for 4 ASINs; 3 review themes from 8 stored reviews |
 | category_attributes | competitor_catalog | already_done | 0 / 0 | satisfied by an earlier priority |
-| semantic | equivalence_judgments | executed | 2 / 0 | 2 requested, 2 valid judgments |
-| semantic | keyword_judgments | executed | 19 / 0 | 57 requested, 19 valid judgments, 38 unanswered (fallbacks apply) |
+| semantic | equivalence_judgments | executed | 2 / 0 | 2 requested, 2 valid model judgments |
+| semantic | keyword_judgments | executed | 19 / 0 | 57 requested, 19 valid model judgments, 38 unanswered (fallbacks apply) |
 
 ## Evidence summary
 
@@ -59,7 +59,7 @@
 | 15 | bpa free | 0.394 | 0.000 H | 0.177 | 0.075 | 0.075 H | 0.067 |
 | 16 | bottle water | 0.367 | 0.017 J | 0.214 | 0.015 | 0.120 J | 0.000 |
 
-Cells show weighted contributions. J = semantic judgment (evidence-backed); H = heuristic placeholder (no evidence); unmarked = measured evidence.
+Cells show weighted contributions. J = model judgment; R = human reviewer judgment (overrides the model); H = heuristic placeholder (no evidence); unmarked = measured evidence.
 
 ## Signal breakdown
 

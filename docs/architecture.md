@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.4a), `·` = planned.
+`✓` = exists (v0.4b), `·` = planned.
 
 ```
 atlas-amazon/
@@ -103,6 +103,16 @@ atlas-amazon/
 │   │   └── scenarios.py           ✓ offline scenario loader
 │   ├── judgments/
 │   │   └── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
+│   ├── semantic/
+│   │   ├── prompts/*.toml         ✓ versioned prompt templates + lock.json fingerprints
+│   │   ├── llm.py                 ✓ LLMJudgmentProvider, LLMReviewThemeProvider
+│   │   ├── transport.py           ✓ Anthropic (live) / Recording / Replay / Scripted
+│   │   ├── cache.py               ✓ persistent semantic cache
+│   │   ├── usage.py, pricing.py   ✓ usage ledger, hard limits, cost estimates
+│   │   ├── human.py               ✓ human judgments + override resolution
+│   │   ├── evaluation.py          ✓ per-type agreement vs reference judgments
+│   │   ├── records.py             ✓ checksummed JSONL + secret guard
+│   │   └── synthetic.py           ✓ scripted responses for offline demo recordings
 │   ├── reviews/
 │   │   └── themes.py              ✓ review-theme Evidence, summaries, opportunities
 │   ├── report/
@@ -602,6 +612,136 @@ first-party input verbatim. Themes only about our own product are never
 presented as competitive opportunities. No claim about our product is
 generated from competitor evidence.
 
+## Live semantic providers (v0.4b)
+
+`semantic/` adds LLM-backed implementations of the v0.4a contracts. CI
+stays offline, and every result stays reproducible and auditable.
+
+```
+LLMJudgmentProvider / LLMReviewThemeProvider
+   │  versioned prompt template (semantic/prompts/*.toml, lock.json)
+   │  structured output: output_config.format = JSON schema
+   ▼
+ cache lookup ──hit──▶ rebuilt from the cached exchange, re-validated
+   │ miss
+ budget check (live transports only) ──refused──▶ stop the batch; heuristics fill in
+   ▼
+ Transport: AnthropicTransport (live) | ReplayTransport | ScriptedTransport
+   │           └ RecordingTransport wraps any transport and saves exchanges
+   ▼
+ semantic_call Evidence (full request + normalized response)
+   ▼
+ validation: judgment_evidence + parse_judgment / review_theme_evidence
+   ▼
+ judgment / review_theme Evidence (+ call metadata), cached only if valid
+```
+
+### Live vs replay vs scripted
+
+| Transport | Network | Counts as live | Use |
+|---|---|---|---|
+| `AnthropicTransport` | yes, official `anthropic` SDK (optional extra `atlas-amazon[llm]`), lazily imported | yes | real runs; **disabled unless `ATLAS_ALLOW_LIVE_LLM=1`** (or `allow_live=True`) |
+| `RecordingTransport(inner, path)` | as inner | as inner | capture a live run for later replay |
+| `ReplayTransport(path)` | **never** | no | CI and local reproduction; an unrecorded request is a `replay_miss` (unanswered, never invented) |
+| `ScriptedTransport(fn)` | never | configurable | tests; `semantic/synthetic.py` scripts answers from fixture judgments for **synthetic** demo recordings |
+
+Default request:
+* model `claude-opus-5-5`, effort `low` (classification), thinking left
+  to the model (adaptive);
+* `output_config.format` JSON schema;
+* server-side refusal fallback (`betas: ["server-side-fallback-2026-07-01"]`,
+  `fallbacks: "default"`).
+
+The served model is recorded separately from the requested one. A
+`refusal` stop reason yields no judgment. Replaying a recorded run
+reproduces the original evidence **byte for byte**: identical
+content-addressed IDs and timestamps from the original response.
+
+### Prompt versioning
+
+Each template has a `version` (e.g. `relevance-v1`) that is recorded on
+every judgment, cache key and `semantic_call`.
+`semantic/prompts/lock.json` pins each version's fingerprint, a sha256 of
+system + user + JSON schema + max_tokens. Editing a template without
+bumping its version fails `test_templates_match_lock_file`. The user
+template has exactly one placeholder, `{input_json}`, rendered as sorted
+JSON inside `<input>` tags.
+
+### Cache
+
+`SemanticCache(path)` is append-only, checksummed JSONL. An entry is
+reused only if **kind, input hash, provider, model and prompt version all
+match**, and the stored prompt fingerprint equals the current one;
+otherwise it is a *stale* miss. Entries store the raw exchange (request
+plus response), never a verdict. A hit goes through exactly the same
+validation as a live response, and only validated exchanges are cached.
+
+### Cost and usage controls
+
+`UsageLedger` records one `UsageRecord` per request: provider, served
+model, purpose, prompt version, source (live / cache / replay / skipped),
+outcome (ok / malformed / refusal / replay_miss / error / budget), input
+and output tokens and estimated cost.
+
+`SemanticBudget(max_live_calls=, max_cost_usd=)` is enforced per run,
+**before** each live call:
+* the call limit refuses the next call once the limit is reached;
+* the cost limit requires `spent + worst case of the next call` (estimated
+  input plus the full `max_tokens` output) ≤ limit;
+* an unpriced model can't be bounded, so it is refused.
+
+A refusal stops the batch. Unanswered requests fall back to the explicit
+heuristics, and the halt appears in the report.
+
+`PricingTable` holds list prices as of 2026-09-25 and can be overridden.
+Costs are *estimates*. `ResearchResult.semantic_usage` and the report's
+"Semantic usage" section summarize live calls, replays, cache hits, tokens,
+estimated cost, failures and halts. `estimate_recording_cost(path, model)`
+prices a recorded run offline: an expected figure (thinking tokens
+excluded) and a worst case.
+
+### Human overrides
+
+`HumanJudgmentProvider` records reviewer decisions as ordinary judgment
+Evidence: `provider = "human"`, `model = "human:<reviewer>"`,
+`prompt_version = "human-review-v1"`, with a rationale required.
+`ResearchProviders(human_judgments=...)` runs alongside the model provider.
+`resolve_judgments` pairs model and human judgments per (type, input hash),
+and **the human judgment wins**. Both records are stored.
+
+The report's *Human overrides* table shows the model judgment, the human
+judgment and which one was used. Signal sources are `human` (mark **R**),
+`judgment` (**J**, model), `heuristic` (**H**) or `evidence`.
+
+### Evaluation
+
+`evaluate_judgments(candidate, reference)` compares model judgments (live
+or replayed) against reference judgments (the fixtures), **per type, with
+no combined score**:
+* relevance: share with |Δscore| ≤ 0.2, plus mean absolute error;
+* intent: label agreement, plus score mean absolute error;
+* entity: label agreement, plus blocking-decision agreement;
+* equivalence: agreement.
+
+Missing and candidate-only answers are counted separately. Every
+disagreement lists both values and both rationales.
+`render_evaluation_markdown` formats the report. See
+`docs/examples/evaluation_*.md`; those use **synthetic** recordings.
+
+### Configuration and security
+
+* Credentials come only from the environment or an `ant auth login`
+  profile, resolved by the SDK. atlas never reads, stores or logs them.
+* Live calls require an explicit opt-in (`ATLAS_ALLOW_LIVE_LLM=1`). The
+  test suite clears that flag and makes `anthropic` unimportable.
+* `ensure_no_secrets` refuses to write credential-shaped content (API-key
+  patterns, bearer tokens, auth headers or fields) to recordings, caches or
+  `semantic_call` evidence. A repository-wide test scans every committed
+  text file.
+* Local caches and live recordings are git-ignored (`.atlas/`,
+  `*.semantic-cache.jsonl`, `*.recording.local.jsonl`). Commit only
+  reviewed fixtures.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -614,23 +754,25 @@ generated from competitor evidence.
    evidence-derived signals with explicit missing data, ranking, audit,
    backend proposal, gap and placement recommendations, validated
    proposals, and a human-review report.
-4. **v0.4a (this release)**: offline semantic layer. Keyword families with
+4. **v0.4a**: offline semantic layer. Keyword families with
    explained links; the `JudgmentProvider` contract (relevance, intent,
    entity, equivalence) with a fixture fake; judgment-sourced
    relevance/intent with an explicit heuristic fallback; entity-flag
    exclusions; review-theme evidence and summaries with conditional,
    first-party-grounded listing opportunities.
-5. **v0.4b (recommended)**: an LLM-backed `JudgmentProvider` and
-   `ReviewThemeProvider` behind configuration:
-   * versioned prompt templates in the repo, with raw request/response
-     capture and a judgment cache keyed by input hash;
-   * structured-output validation that reuses `parse_judgment`;
-   * cost and rate limits;
-   * a recorded-response test harness, so CI stays offline;
-   * evaluation: agreement between the LLM and the fixture judgments,
-     disagreements surfaced in the report, and a human override path
-     (judgments with `provider = "human"`).
-6. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+5. **v0.4b (this release)**: live semantic providers. LLM judgments and
+   review themes through the official SDK (opt-in), versioned prompts,
+   a persistent cache, record/replay for offline CI, a usage ledger with
+   hard call and cost limits, human overrides, and per-type evaluation.
+6. **v0.5 (recommended)**: a real recorded baseline and review workflow:
+   * record one live run per scenario (with approval for the spend) and
+     publish real per-type agreement and measured cost;
+   * an override file workflow: export disagreements for a reviewer and
+     import their decisions as human judgments;
+   * request batching or Batch API support to cut semantic cost;
+   * then the first read-only live market-data adapter (autocomplete or
+     SP-API Catalog) with the same record/replay discipline.
+7. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.
