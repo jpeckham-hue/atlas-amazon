@@ -1,0 +1,90 @@
+{
+  "name": "Insulated water bottle",
+  "run_id": "run-bottle-001",
+  "started_at": "2026-10-03T09:30:00+00:00",
+  "product": {
+    "title": "Acme Insulated Water Bottle 32 oz",
+    "recipe_id": "physical-product",
+    "marketplace": "US",
+    "asin": "B0ACME0001",
+    "competitor_asins": ["B0COMP0001", "B0COMP0002", "B0COMP0003"],
+    "attributes": {"seed_keywords": ["water bottle", "insulated water bottle"]}
+  },
+  "listing": {
+    "title": "Acme Water Bottle, 32 oz, Stainless Steel",
+    "brand": "Acme",
+    "bullets": [
+      "Keeps drinks cold for 24 hours",
+      "Leak proof lid with carry loop",
+      "Fits most cup holders"
+    ],
+    "description": "A sturdy stainless steel bottle for everyday hydration.",
+    "search_terms": "flask gym hiking flask"
+  },
+  "providers": ["catalog", "keywords", "suggestions", "reviews"],
+  "fixture": {
+    "provider": "fixture",
+    "retrieved_at": "2026-10-03T09:25:00+00:00",
+    "catalog": {
+      "US": {
+        "B0COMP0001": {
+          "title": "Hydra Insulated Water Bottle with Straw Lid, 32 oz",
+          "bullets": ["Double wall vacuum insulation", "Leak proof straw lid", "BPA free"],
+          "brand": "Hydra"
+        },
+        "B0COMP0002": {
+          "title": "Peak Stainless Steel Water Bottle, Vacuum Insulated, 24 oz",
+          "bullets": ["Double wall vacuum insulation keeps drinks cold", "Leak proof cap"],
+          "brand": "Peak"
+        },
+        "B0COMP0003": {
+          "title": "Trail Insulated Water Bottle for Kids, Leak Proof",
+          "bullets": ["Straw lid for easy sipping", "BPA free stainless steel"],
+          "brand": "Trail"
+        }
+      }
+    },
+    "suggestions": {
+      "US": {
+        "water bottle": [
+          "water bottle with straw",
+          "water bottle insulated",
+          "water bottles for kids",
+          "water bottle 32 oz"
+        ],
+        "insulated water bottle": [
+          "insulated water bottle with straw",
+          "insulated water bottle stainless steel"
+        ]
+      }
+    },
+    "keyword_metrics": {
+      "US": {
+        "water bottle": {"search_volume": 450000, "competition": 0.95},
+        "insulated water bottle": {"search_volume": 120000, "competition": 0.8},
+        "water bottle with straw": {"search_volume": 90000, "competition": 0.7},
+        "water bottle insulated": {"search_volume": 20000, "competition": 0.75},
+        "water bottles for kids": {"search_volume": 60000, "competition": 0.65},
+        "water bottle 32 oz": {"search_volume": 30000, "competition": 0.5},
+        "insulated water bottle with straw": {"search_volume": 25000, "competition": 0.45},
+        "insulated water bottle stainless steel": {"search_volume": 12000, "competition": 0.4},
+        "leak proof": {"search_volume": 8000, "competition": 0.3},
+        "double wall vacuum": {"search_volume": 3000, "competition": 0.2},
+        "straw lid": {"search_volume": 15000, "competition": 0.35},
+        "stainless steel": {"search_volume": 200000, "competition": 0.9},
+        "bpa free": {"search_volume": 10000, "competition": 0.5},
+        "vacuum insulation": {"search_volume": 1500, "competition": 0.2},
+        "double wall": {"search_volume": 4000, "competition": 0.25}
+      }
+    },
+    "reviews": {
+      "US": {
+        "B0COMP0001": [
+          {"rating": 5, "text": "Ice lasts all day."},
+          {"rating": 2, "text": "Straw lid leaked in my bag."}
+        ],
+        "B0COMP0002": [{"rating": 4, "text": "Heavy but tough."}]
+      }
+    }
+  }
+}

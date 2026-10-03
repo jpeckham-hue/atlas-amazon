@@ -74,6 +74,8 @@ description = "KDP keyword boxes (backend)."
 field = "keywords"
 mode = "slots"
 source = "kdp-keywords"
+# KDP Keywords "to avoid": information already covered elsewhere in the metadata.
+visible_fields = ["title", "subtitle"]
 
 # --- Title / subtitle rules (kdp-metadata-guidelines) --------------------------
 

@@ -1,0 +1,65 @@
+{
+  "name": "Already well-covered bottle listing",
+  "run_id": "run-covered-001",
+  "started_at": "2026-10-03T10:30:00+00:00",
+  "product": {
+    "title": "Brightline Insulated Water Bottle with Straw",
+    "recipe_id": "physical-product",
+    "marketplace": "US",
+    "asin": "B0BRIGHT01",
+    "competitor_asins": ["B0COVER001", "B0COVER002"],
+    "attributes": {"seed_keywords": ["insulated water bottle"]}
+  },
+  "listing": {
+    "title": "Brightline Insulated Water Bottle with Straw, 24 oz",
+    "item_highlights": "Stainless Steel, Leak Proof, Keeps Cold 24 Hours",
+    "brand": "Brightline",
+    "bullets": [
+      "Insulated water bottle stainless steel body with double wall vacuum",
+      "Insulated water bottle leak proof lid for bags and backpacks",
+      "Straw lid flips open for one hand sipping"
+    ],
+    "search_terms": "gym hiking camping"
+  },
+  "providers": ["catalog", "keywords", "suggestions"],
+  "fixture": {
+    "provider": "fixture",
+    "retrieved_at": "2026-10-03T10:25:00+00:00",
+    "catalog": {
+      "US": {
+        "B0COVER001": {
+          "title": "Insulated Water Bottle with Straw Lid",
+          "bullets": ["Stainless steel, leak proof"]
+        },
+        "B0COVER002": {
+          "title": "Stainless Steel Insulated Water Bottle",
+          "bullets": ["Leak proof straw lid"]
+        }
+      }
+    },
+    "suggestions": {
+      "US": {
+        "insulated water bottle": [
+          "insulated water bottle with straw",
+          "insulated water bottle stainless steel",
+          "insulated water bottle leak proof"
+        ]
+      }
+    },
+    "keyword_metrics": {
+      "US": {
+        "insulated water bottle": {"search_volume": 120000, "competition": 0.8},
+        "insulated water bottle with straw": {"search_volume": 25000, "competition": 0.45},
+        "insulated water bottle stainless steel": {"search_volume": 12000, "competition": 0.4},
+        "insulated water bottle leak proof": {"search_volume": 6000, "competition": 0.3},
+        "water bottle": {"search_volume": 450000, "competition": 0.95},
+        "insulated water": {"search_volume": 900, "competition": 0.5},
+        "stainless steel": {"search_volume": 200000, "competition": 0.9},
+        "leak proof": {"search_volume": 8000, "competition": 0.3},
+        "straw lid": {"search_volume": 15000, "competition": 0.35},
+        "water bottle with straw": {"search_volume": 90000, "competition": 0.7},
+        "bottle with straw": {"search_volume": 700, "competition": 0.3}
+      }
+    }
+  }
+}

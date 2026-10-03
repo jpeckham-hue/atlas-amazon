@@ -9,7 +9,10 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.2: offline foundation.** In place:
+> Status: **v0.3: first end-to-end offline research workflow.** `ResearchRun`
+> answers "which keywords matter, what am I missing, why, and what should
+> change?" for a book or a product listing, from fixture data, with every
+> number traced to evidence. Also in place:
 > * recipe loading, with rules sourced to official Amazon and KDP pages;
 > * keyword normalization, coverage and decomposable scoring;
 > * backend keyword packing and the listing audit;
@@ -106,7 +109,23 @@ packed = pack_backend_bytes(
 print(packed.text, packed.byte_count, [(e.term, e.reason.value) for e in packed.excluded])
 ```
 
-### Evidence, scoring and proposals (v0.2, offline)
+### End-to-end research run (v0.3, offline)
+
+```python
+from atlas_amazon.report import render_markdown
+from atlas_amazon.research import load_scenario
+
+result = load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json").run()
+print(render_markdown(result))
+```
+
+To use your own inputs, build a `ResearchRun(product=..., listing=...,
+recipe_id=..., run_id=..., providers=ResearchProviders(...), store=...,
+started_at=...)` and call `.execute()`. See the example reports for a
+[KDP book](docs/examples/book_cozy_mystery.md) and a
+[physical product](docs/examples/physical_water_bottle.md).
+
+### Evidence, scoring and proposals (v0.2 building blocks)
 
 ```python
 from atlas_amazon.evidence import JsonlEvidenceStore
@@ -166,7 +185,9 @@ src/atlas_amazon/
   audit/      deterministic listing audit
   evidence/   identity, serialization, store Protocol, JSONL store
   providers/  Catalog/KeywordData/Suggestion/Review Protocols + fixture fakes
-  planner/    Proposal + validate_proposal
+  planner/    Proposal + validate_proposal, backend plan, gap recommendations
+  research/   ResearchRun orchestration, priority tasks, scenarios
+  report/     report dict / JSON / Markdown (formatting only)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full architecture

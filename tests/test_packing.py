@@ -30,6 +30,7 @@ class TestPackBackendBytes:
             stopwords=["for"],
         )
         assert result.included == ("water", "bottle", "kids")
+        assert result.included_from == ("water bottle for kids",) * 3
         assert ("for", ExclusionReason.STOPWORD) in reasons(result)
         assert ("bottles", ExclusionReason.DUPLICATE) in reasons(result)
         assert ("kid", ExclusionReason.DUPLICATE) in reasons(result)

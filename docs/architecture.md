@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.2), `·` = planned.
+`✓` = exists (v0.3), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,6 +59,7 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
+│   ├── examples/                  ✓ golden example research reports
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
 ├── src/atlas_amazon/
 │   ├── models.py                  ✓ ProductInput, Listing, Evidence, EvidenceKind, SourceRef,
@@ -74,7 +75,9 @@ atlas-amazon/
 │   ├── keywords/
 │   │   ├── normalize.py           ✓ normalize_text, tokenize, fold_plural, keyword_key, dedupe
 │   │   ├── coverage.py            ✓ exact/token/placement coverage
-│   │   └── scoring.py             ✓ decomposable keyword score, ranking, signal transforms
+│   │   ├── scoring.py             ✓ decomposable keyword score, ranking, signal transforms
+│   │   ├── candidates.py          ✓ keyword candidates from seeds/suggestions/competitors
+│   │   └── signals.py             ✓ evidence -> scoring signals, explicit missing data
 │   ├── backend/
 │   │   └── packing.py             ✓ byte-budget and slot packing with exclusion reasons
 │   ├── audit/
@@ -91,8 +94,14 @@ atlas-amazon/
 │   │   ├── autocomplete.py        ·
 │   │   └── nexscope.py            ·
 │   ├── planner/
-│   │   └── proposal.py            ✓ Proposal, ProposalBasis, validate_proposal
-│   ├── research/                  · v0.3 offline research run + review report
+│   │   ├── proposal.py            ✓ Proposal, ProposalBasis, validate_proposal
+│   │   └── recommend.py           ✓ backend plan, keyword gaps, placement upgrades
+│   ├── research/
+│   │   ├── run.py                 ✓ ResearchRun orchestration, ResearchResult
+│   │   ├── tasks.py               ✓ research priority -> task registry
+│   │   └── scenarios.py           ✓ offline scenario loader
+│   ├── report/
+│   │   └── render.py              ✓ report dict / JSON / Markdown (formatting only)
 │   ├── llm/                       · prompt contracts; outputs re-validated
 │   └── review/                    · approval records; publish is gated on approval
 └── tests/                         ✓ one module per domain module; fixtures/ for fakes
@@ -345,26 +354,149 @@ with an approval record.
   base listing appear in the full `audit` but don't block the proposal.
   Warnings never block.
 
+## Research workflow (v0.3)
+
+The first end-to-end question atlas can answer: *"Here is a book or
+listing. Which keywords matter, what am I missing, why, and what should
+change?"* It is fully offline and deterministic.
+
+```
+ResearchRun(product, listing, recipe_id, run_id, providers, store, started_at)
+  1 collect    for each recipe research.priority -> task (research/tasks.py)
+               provider -> Evidence -> store   (always stored before use)
+  2 derive     store.query(run_id) -> build_candidates -> derive_signals
+               -> rank_keywords (v0.2 scoring)
+  3 assess     audit_listing(current listing, recipe)
+  4 recommend  plan_backend -> Proposal ; keyword_recommendations
+               validate_proposal(each proposal)
+  -> ResearchResult -> report_dict / report_json / render_markdown
+```
+
+**Separation of concerns.**
+
+| Layer | Modules | May | May not |
+|---|---|---|---|
+| Orchestration | `research/run.py`, `research/tasks.py` | choose providers and inputs per priority, store evidence, call domain functions, account for missing data | score, rank, judge or invent values |
+| Providers | `providers/*` | return Evidence | score or rank |
+| Domain | `keywords/candidates.py`, `keywords/signals.py`, `keywords/scoring.py`, `planner/recommend.py`, `audit/` | compute everything | do I/O |
+| Report | `report/render.py` | copy and format result fields | compute, threshold or decide |
+
+**Priorities to tasks.** Several priorities can share one task, which runs
+once; later priorities record `already_done`. Priorities with no offline
+task are recorded as `unsupported`. A task without a provider is
+`no_provider`, and one without inputs is `no_input`.
+
+| Priorities | Task | Provider calls |
+|---|---|---|
+| competitor_titles, competitor_bullets, comparable_titles, category_attributes | `competitor_catalog` | `get_items(competitor ASINs)` |
+| search_term_demand | `search_demand` | `suggestions(seed)` per seed, then `keyword_metrics(candidates built from evidence stored so far)` |
+| review_themes, reader_review_themes | `competitor_reviews` | `reviews(asin)` for the product and its competitors. Stored and summarized only: theme analysis needs semantic judgment (v0.4) |
+| browse_categories, series_and_format_signals | (none) | recorded `unsupported` |
+
+Order matters, and comes from the recipe. If `search_term_demand` runs
+before competitor catalog data exists, competitor phrases get no metrics
+and show up as unscored with that reason.
+
+**Seeds.** Seeds come from `product.attributes["seed_keywords"]`, falling
+back to the product title. The metadata records which source was used.
+
+**Keyword candidates** (`keywords/candidates.py`), merged by plural-folded
+key, with sources and evidence IDs unioned:
+seeds, suggestion strings, the current listing's keyword-box phrases (slots
+backends), and 2–3-word competitor phrases shared by at least
+`min_competitor_support` (default 2) competitors. Shared phrases may not
+start or end with a stopword or be digits only.
+
+**Signals** (`keywords/signals.py`):
+
+| Signal | Source | Formula |
+|---|---|---|
+| demand | `keyword_metric` | `log1p(volume) / log1p(max volume among candidate metrics)` |
+| competition | `keyword_metric` | metric `competition` ∈ [0, 1], scored as `1 − value` |
+| competitor_coverage | `catalog_item` | share of competitors with the exact phrase in one segment |
+| relevance | **heuristic** | share of non-stopword keyword terms found in the product title or seeds |
+| intent | **heuristic** | `min(1, words / 4)`, a specificity proxy |
+
+Heuristic signals carry no evidence IDs, so every score lists them in
+`heuristic_signals` and every report marks them. **No defaults:** a
+candidate missing any evidence-derived signal (no metric, an invalid
+volume or competition, no competitors) is reported as *unscored* with a
+per-signal reason, and is never ranked on an invented value. Each signal
+also carries a derivation note, e.g. `log1p(9000) / log1p(120000) from ev_…`.
+
+**Recommendations** (`planner/recommend.py`). No copywriting.
+
+* `plan_backend` packs ranked keywords, best first, into the backend field.
+  The byte budget for Seller Central search terms, or 7 phrase slots for
+  KDP. Before packing:
+  * keywords hitting any enabled `prohibited_terms` rule on the backend
+    field are removed, citing the rule;
+  * words in `[backend] visible_fields` are skipped;
+  * the listing's **current backend content is retained at the lowest
+    priority**. The rationale names what was retained and what was dropped,
+    so nothing disappears silently.
+
+  The proposal cites the evidence of every contributing keyword and is
+  omitted when it would equal the current value.
+* `keyword_recommendations` covers the top-N ranked keywords:
+  * `keyword_gap`: the exact phrase is in no weighted field;
+  * `placement_upgrade`: the phrase is only in a lower-weight field.
+
+  Suggested fields are ordered by coverage weight. Fields where a recipe
+  rule forbids the keyword are listed as `blocked_fields` with the rule ID.
+  A gap the backend proposal already packs links to that proposal.
+
+**Reproducibility.** There is no wall clock (`started_at` is an input) and
+no randomness. Evidence IDs are content-addressed, and every collection is
+built in insertion or sorted order. The same fixtures, recipe version,
+inputs and `started_at` give an equal `ResearchResult` and byte-identical
+reports. Re-running a `run_id` on the same store reuses its evidence
+(`reused_records`) instead of duplicating it.
+`metadata.evidence_fingerprint` hashes the sorted evidence IDs a run
+used.
+
+**Report** (`report/`): `report_dict` (JSON-ready), `report_json` and
+`render_markdown`. Sections: run metadata, research tasks, evidence summary
+(including explicit gaps: competitors without catalog, seeds without
+suggestions, candidates without metrics, ASINs without reviews), current
+audit with rule provenance, ranked keywords, per-keyword signal breakdown
+with evidence and derivation, unscored keywords, recommendations,
+proposals with validation. Examples:
+[book](examples/book_cozy_mystery.md),
+[physical product](examples/physical_water_bottle.md). A golden test keeps
+them current.
+
+**Scenarios** (`research/scenarios.py`, `tests/fixtures/scenarios/`): one
+JSON per scenario (inputs, configured provider roles, fixture data):
+`book_cozy_mystery`, `physical_water_bottle`, `partial_missing_data` (no
+suggestion or review provider, a competitor missing from the catalog,
+incomplete metrics) and `well_covered_listing`.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
    **v0.1.1**: rule-source verification pass (2026-10-03).
-2. **v0.2 (this release)**: decomposable keyword scoring, the evidence
+2. **v0.2**: decomposable keyword scoring, the evidence
    store Protocol plus in-memory and append-only JSONL stores, provider
    Protocols with fixture fakes, and the Proposal model with audit-gated
    validation.
-3. **v0.3**: offline research orchestration. A `ResearchRun` drives the
-   providers in `research.priorities` order into the evidence store, derives
-   `KeywordSignals` from stored evidence (keyword candidates from
-   suggestions and metrics, demand/competition from metrics, competitor
-   coverage from catalog evidence), ranks keywords, audits the current
-   listing, emits deterministic heuristic proposals (e.g. backend packing),
-   and writes a human-review report that links every number to evidence.
-   Fully fixture-driven and offline. The CLI waits until the run shape has
-   settled.
-4. **v0.4**: first live read-only providers (autocomplete, SP-API catalog, and
-   SP-API Product Type Definitions to verify per-product-type limits for
-   bullets, description and generic keywords), then LLM generation and
-   relevance/intent judgments with deterministic re-validation.
-5. **Later**: an approval-gated SP-API write path, more category recipes, and
-   a multi-marketplace rules matrix.
+3. **v0.3 (this release)**: the offline `ResearchRun`: priority-driven
+   collection, evidence-derived signals with explicit missing data,
+   ranking, audit, backend proposal, gap and placement recommendations,
+   validated proposals, and a human-review report. There are four fixture
+   scenarios.
+4. **v0.4 (recommended)**: replace the two heuristic placeholders with
+   recorded judgments, still offline-testable:
+   * a `JudgmentProvider` protocol that produces relevance and intent as
+     Evidence (model, prompt version, input hash), with fixture-backed fakes;
+   * review-theme extraction stored as `review_theme` evidence;
+   * a semantic gate for entity rules (other authors' names, trademarks,
+     brand names in search terms) that turns documented-but-unenforced rules
+     into findings, flagged as model-derived.
+
+   Then a minimal CLI over `ResearchRun` and the first read-only live adapter
+   (autocomplete or SP-API Catalog) behind configuration, with raw-response
+   capture.
+5. **Later**: SP-API Product Type Definitions to verify per-type limits,
+   LLM copy generation with deterministic re-validation, an approval-gated
+   write path, more category recipes, and a multi-marketplace rules matrix.

@@ -174,6 +174,7 @@ def test_physical_product_shape():
     assert recipe.fields["title"].required  # inherited from amazon-base
     assert recipe.backend.mode == "bytes"
     assert recipe.backend.field_name == "search_terms"
+    assert recipe.backend.visible_fields == ("title", "item_highlights", "bullets", "brand")
     assert recipe.rules["backend_visible_overlap"].source.status is SourceStatus.HEURISTIC
     assert recipe.rules["title_promotional_extended"].severity is Severity.WARNING
     assert recipe.coverage_weights == {
@@ -189,6 +190,7 @@ def test_book_shape():
     recipe = load_recipe("book")
     assert "bullets" not in recipe.fields
     assert recipe.backend.mode == "slots"
+    assert recipe.backend.visible_fields == ("title", "subtitle")
     assert recipe.rules["title_subtitle_length"].params["max_chars"] == 199
     keywords = recipe.fields["keywords"]
     assert keywords.source.id == "kdp-keywords"
@@ -302,6 +304,16 @@ def test_child_tables_merge_key_by_key(tmp_path):
             "require a \\[backend\\]",
         ),
         ("[backend]\nfield = 'title'\nmode = 'bytes'\nsource = 's'\n", "max_bytes"),
+        (
+            "[fields.st]\nkind = 'text'\nmax_bytes = 9\nsource = 's'\n"
+            "[backend]\nfield = 'st'\nmode = 'bytes'\nsource = 's'\nvisible_fields = ['nope']\n",
+            "visible_fields",
+        ),
+        (
+            "[fields.st]\nkind = 'text'\nmax_bytes = 9\nsource = 's'\n"
+            "[backend]\nfield = 'st'\nmode = 'bytes'\nsource = 's'\nvisible_fields = ['st']\n",
+            "visible_fields",
+        ),
         ("[sources.t]\ntitle = 'x'\nas_of = '2026-01-01'\nstatus = 'heuristic'\n", "as_of"),
         ("[sources.t]\ntitle = 'x'\nas_of = 2026-01-01\nstatus = 'gospel'\n", "status"),
         ("[surprise]\nx = 1\n", "unknown keys"),

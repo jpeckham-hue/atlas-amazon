@@ -1,0 +1,81 @@
+{
+  "name": "KDP cozy mystery",
+  "run_id": "run-book-001",
+  "started_at": "2026-10-03T09:00:00+00:00",
+  "product": {
+    "title": "The Quiet Harbor",
+    "recipe_id": "book",
+    "marketplace": "US",
+    "asin": "B0BOOK0001",
+    "competitor_asins": ["B0BOOKC001", "B0BOOKC002", "B0BOOKC003"],
+    "attributes": {"seed_keywords": ["cozy mystery", "small town mystery"]}
+  },
+  "listing": {
+    "title": "The Quiet Harbor",
+    "subtitle": "A Cozy Mystery",
+    "description": "When a body washes up beside the ferry dock, bakery owner Nell Avery must clear her brother's name before the harbor festival.",
+    "keywords": ["mystery books", "harbor town"]
+  },
+  "providers": ["catalog", "keywords", "suggestions", "reviews"],
+  "fixture": {
+    "provider": "fixture",
+    "retrieved_at": "2026-10-03T08:55:00+00:00",
+    "catalog": {
+      "US": {
+        "B0BOOKC001": {
+          "title": "Murder at the Lighthouse",
+          "subtitle": "A Small Town Cozy Mystery",
+          "description": "An amateur sleuth investigates a death at the old lighthouse in a sleepy coastal village."
+        },
+        "B0BOOKC002": {
+          "title": "The Bakery Murders",
+          "subtitle": "A Culinary Cozy Mystery",
+          "description": "A baker turned amateur sleuth hunts a killer in her small town."
+        },
+        "B0BOOKC003": {
+          "title": "Death on the Docks",
+          "subtitle": "A Coastal Cozy Mystery with Cats",
+          "description": "A retired librarian, her two cats and an amateur sleuth club solve a small town murder."
+        }
+      }
+    },
+    "suggestions": {
+      "US": {
+        "cozy mystery": [
+          "cozy mystery books",
+          "cozy mystery series",
+          "cozy mystery kindle unlimited",
+          "cozy mystery with cats"
+        ],
+        "small town mystery": ["small town mystery books", "small town murder mystery"]
+      }
+    },
+    "keyword_metrics": {
+      "US": {
+        "cozy mystery": {"search_volume": 60000, "competition": 0.9},
+        "cozy mystery books": {"search_volume": 33000, "competition": 0.85},
+        "cozy mystery series": {"search_volume": 22000, "competition": 0.7},
+        "cozy mystery kindle unlimited": {"search_volume": 15000, "competition": 0.5},
+        "cozy mystery with cats": {"search_volume": 4000, "competition": 0.3},
+        "small town mystery": {"search_volume": 9000, "competition": 0.6},
+        "small town mystery books": {"search_volume": 2500, "competition": 0.4},
+        "small town murder mystery": {"search_volume": 3000, "competition": 0.35},
+        "amateur sleuth": {"search_volume": 5000, "competition": 0.3},
+        "small town": {"search_volume": 80000, "competition": 0.95},
+        "mystery books": {"search_volume": 120000, "competition": 0.98},
+        "harbor town": {"search_volume": 50, "competition": 0.1}
+      }
+    },
+    "reviews": {
+      "US": {
+        "B0BOOKC001": [
+          {"rating": 5, "text": "Charming village, clever puzzle, no gore."},
+          {"rating": 3, "text": "Guessed the killer early."}
+        ],
+        "B0BOOKC003": [
+          {"rating": 5, "text": "The cats steal the show!"}
+        ]
+      }
+    }
+  }
+}

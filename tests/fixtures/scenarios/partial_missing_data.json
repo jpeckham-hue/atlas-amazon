@@ -1,0 +1,36 @@
+{
+  "name": "Yoga mat with partial data",
+  "run_id": "run-partial-001",
+  "started_at": "2026-10-03T10:00:00+00:00",
+  "product": {
+    "title": "Lotus Non Slip Yoga Mat",
+    "recipe_id": "physical-product",
+    "marketplace": "US",
+    "competitor_asins": ["B0YOGA0001", "B0YOGA0002"],
+    "attributes": {"seed_keywords": ["yoga mat", "non slip yoga mat", "thick yoga mat"]}
+  },
+  "listing": {
+    "title": "Lotus Yoga Mat",
+    "bullets": ["Six millimeter cushioning"],
+    "search_terms": "exercise pilates"
+  },
+  "providers": ["catalog", "keywords"],
+  "fixture": {
+    "provider": "fixture",
+    "retrieved_at": "2026-10-03T09:58:00+00:00",
+    "catalog": {
+      "US": {
+        "B0YOGA0001": {
+          "title": "Zen Non Slip Yoga Mat, 6 mm",
+          "bullets": ["Non slip texture", "Carry strap included"]
+        }
+      }
+    },
+    "keyword_metrics": {
+      "US": {
+        "yoga mat": {"search_volume": 300000, "competition": 0.9},
+        "non slip yoga mat": {"search_volume": 40000}
+      }
+    }
+  }
+}

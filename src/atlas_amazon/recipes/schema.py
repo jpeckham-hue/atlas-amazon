@@ -80,6 +80,9 @@ class BackendSpec:
     source: SourceRef
     count_spaces: bool = True
     stopwords: tuple[str, ...] = ()
+    # Shopper-visible fields whose words don't need repeating in the backend
+    # (used by backend packing).
+    visible_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

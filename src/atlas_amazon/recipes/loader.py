@@ -49,7 +49,9 @@ _FIELD_KEYS = frozenset(
     {"kind", "required", "source", "limit_sources", "description", *_FIELD_LIMITS}
 )
 _RULE_META = frozenset({"check", "severity", "source", "fields", "enabled", "description"})
-_BACKEND_KEYS = frozenset({"field", "mode", "source", "count_spaces", "stopwords"})
+_BACKEND_KEYS = frozenset(
+    {"field", "mode", "source", "count_spaces", "stopwords", "visible_fields"}
+)
 _OPTIONAL_PARAMS: Mapping[str, frozenset[str]] = {"word_repetition": frozenset({"exempt"})}
 
 
@@ -342,6 +344,10 @@ def _build_backend(
         raise _fail(
             rid, "backend", "slots mode needs a list field with max_count and item_max_chars"
         )
+    visible = _str_list(rid, "backend.visible_fields", raw.get("visible_fields", []))
+    for field_name in visible:
+        if field_name not in fields or field_name == name:
+            raise _fail(rid, "backend.visible_fields", f"invalid field {field_name!r}")
     count_spaces = raw.get("count_spaces", True)
     if not isinstance(count_spaces, bool):
         raise _fail(rid, "backend.count_spaces", "must be a boolean")
@@ -351,6 +357,7 @@ def _build_backend(
         source=_source_ref(rid, "backend.source", raw.get("source"), sources),
         count_spaces=count_spaces,
         stopwords=_str_list(rid, "backend.stopwords", raw.get("stopwords", [])),
+        visible_fields=visible,
     )
 
 

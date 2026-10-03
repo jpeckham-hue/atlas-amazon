@@ -90,6 +90,10 @@ count_spaces = true
 # The page lists "a", "and", "or", "the", "with" and says "articles, prepositions,
 # and other short words". The remaining entries are common prepositions.
 stopwords = ["a", "an", "and", "by", "for", "of", "or", "the", "to", "with"]
+# Packing skips words already visible here. This mirrors the heuristic
+# rules.backend_visible_overlap; official guidance only covers repeats within
+# search terms.
+visible_fields = ["title", "item_highlights", "bullets", "brand"]
 source = "sc-search-optimization"
 
 # --- Title rules (verified, sc-title-requirements) -----------------------------

@@ -58,6 +58,7 @@ class BytePackResult:
     max_bytes: int
     included: tuple[str, ...]
     excluded: tuple[Exclusion, ...]
+    included_from: tuple[str, ...] = ()  # the candidate each included token came from
 
     @property
     def remaining_bytes(self) -> int:
@@ -78,6 +79,7 @@ def pack_backend_bytes(
     stop = _folded_tokens(stopwords)
     shown = _folded_tokens(visible)
     included: list[str] = []
+    included_from: list[str] = []
     seen: set[str] = set()
     excluded: list[Exclusion] = []
 
@@ -101,6 +103,7 @@ def pack_backend_bytes(
                 reason = ExclusionReason.OVER_BUDGET
             else:
                 included.append(token)
+                included_from.append(candidate)
                 seen.add(key)
                 continue
             excluded.append(Exclusion(token, reason, candidate))
@@ -112,6 +115,7 @@ def pack_backend_bytes(
         max_bytes=max_bytes,
         included=tuple(included),
         excluded=tuple(excluded),
+        included_from=tuple(included_from),
     )
 
 
