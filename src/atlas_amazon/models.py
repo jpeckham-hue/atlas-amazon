@@ -47,7 +47,11 @@ class SourceRef:
     status: SourceStatus
     url: str | None = None
     marketplace: str | None = None
+    scope: str | None = None
     note: str | None = None
+    # Non-authoritative references (forums, third-party guides). They never
+    # justify a `verified` status and are kept apart from `url` on purpose.
+    see_also: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

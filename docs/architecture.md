@@ -58,7 +58,8 @@ atlas-amazon/
 ├── pyproject.toml                 ✓ hatchling; no runtime deps; pytest + ruff dev
 ├── README.md                      ✓
 ├── docs/
-│   └── architecture.md            ✓ this file
+│   ├── architecture.md            ✓ this file
+│   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
 ├── src/atlas_amazon/
 │   ├── models.py                  ✓ ProductInput, Listing, Evidence, SourceRef, Finding, AuditReport
 │   ├── recipes/
@@ -95,15 +96,15 @@ atlas-amazon/
 | `ProductInput` | User-supplied metadata, recipe id, marketplace, optional ASIN and competitor ASINs (validated format, no self-competition). |
 | `Listing` | Recipe-agnostic `field -> str \| tuple[str]` map. The recipe decides what the fields mean. |
 | `Evidence` | One observed fact. `retrieved_at` must be timezone-aware. The payload is frozen. |
-| `SourceRef` | Provenance for a *rule*: title, `as_of` date, status (`verified` / `unverified` / `heuristic`), optional URL, marketplace and note. |
+| `SourceRef` | Provenance for a *rule*: title, `as_of` date, status (`verified` / `unverified` / `heuristic`), URL, marketplace, scope, note, and `see_also` (non-authoritative references kept apart from `url`). |
 | `Finding` | An audit result with rule id, severity, observed value, limit and the rule's `SourceRef`. |
 | `AuditReport` | Findings plus `passed` (no errors). Warnings and info don't fail an audit. |
 
 Two different kinds of provenance:
 
 * **Evidence** is about the *market*: "competitor X's title on 2026-10-01 was …".
-* **SourceRef** is about the *rules*: "the 200-character title limit comes from
-  a Jan 2025 Seller Central policy, unverified".
+* **SourceRef** is about the *rules*: "the 75-character product title limit
+  comes from Seller Central Help page GYTR6SYGFA5E3EQC, verified 2026-10-03".
 
 ## Recipes
 
@@ -112,8 +113,8 @@ A recipe is a TOML file with these sections:
 | Section | Meaning |
 |---|---|
 | `id`, `version`, `description`, `extends` | Identity and a single parent. These keys are never inherited. |
-| `[sources.<id>]` | Dated provenance entries referenced by fields, rules and the backend. |
-| `[fields.<name>]` | `kind` (`text`/`list`), `required`, and limits: `max_chars`, `max_bytes`, `min_count`, `max_count`, `item_max_chars`, `item_max_bytes`. **Any limit requires a `source`.** |
+| `[sources.<id>]` | Dated provenance entries referenced by fields, rules and the backend: `title`, `as_of`, `status`, `url`, `marketplace`, `scope`, `note`, `see_also`. A `verified` source needs an https URL on an official Amazon policy host (not a forum). An `unverified` source needs a `note`. |
+| `[fields.<name>]` | `kind` (`text`/`list`), `required`, and limits: `max_chars`, `max_bytes`, `min_count`, `max_count`, `item_max_chars`, `item_max_bytes`. **Every limit must resolve to a source**: the field's `source`, or a per-limit override in `limit_sources = { item_max_chars = "..." }` when one field's limits are documented in different places or verified to different degrees. |
 | `[rules.<id>]` | `check` (one of `KNOWN_CHECKS`), `severity`, `source` (mandatory), `fields`, `enabled`, plus the check's params. |
 | `[backend]` | Which field holds hidden keywords and how it's budgeted: `mode = "bytes"` (text field with `max_bytes`) or `mode = "slots"` (list field with `max_count` × `item_max_chars`). |
 | `[scoring.keyword]` | Weights for the five keyword signals. Must sum to 1. |
@@ -122,9 +123,8 @@ A recipe is a TOML file with these sections:
 
 **Merge semantics:** the chain is merged root first. Tables merge key by key
 and every other value (lists included) is replaced by the child. That lets a
-child override part of a rule, e.g. widen `promotional_terms.fields` to
-include bullets while keeping the inherited terms, or disable a rule with
-`enabled = false`.
+child override part of a rule, e.g. change a rule's severity while keeping
+its inherited terms, or disable it with `enabled = false`.
 
 **Strictness:** unknown keys, unknown checks, unsourced limits, rules without
 sources, dangling field references, invalid backend shapes and keyword
@@ -132,20 +132,25 @@ weights that don't sum to 1 all raise `RecipeError` at load time.
 
 ### Built-in recipes
 
-* **amazon-base**: title (200 chars, required), description (2000). Rules for
-  title word repetition (max 2, function words exempt), decorative special
-  characters, and promotional terms.
-* **physical-product**: adds `brand`, `bullets` (5 × 500 chars),
-  `search_terms` (250 bytes, spaces counted conservatively), a backend
-  redundancy warning, and promotional terms widened to bullets.
-* **book**: adds `subtitle`, a title+subtitle combined limit of 200, a
-  4000-char description and 7 × 50-char KDP keyword slots. It disables the
-  title repetition and special-character rules, because a book title must
-  match its cover. KDP keyword prohibited terms are deterministic. The
-  other-authors'-names check is left to LLM/human review.
+Full rule-by-rule status, with links, is in [rule-sources.md](rule-sources.md).
 
-All built-in sources are currently `unverified` or `heuristic`. A test fails
-if any becomes `verified` without the test being updated deliberately.
+* **amazon-base**: shared field vocabulary (`title` required, `description`)
+  and default weights. It deliberately has **no limits and no rules**:
+  Seller Central and KDP document different rules, and the Seller Central
+  title requirements exempt media product types, books included.
+* **physical-product** (Seller Central, US): title ≤ 75, item highlights
+  ≤ 125, search terms < 250 bytes (all verified), title, bullet and
+  search-term content rules (verified), bullets 5 × 500 and description
+  2000 (unverified: these vary by product type), and two heuristic warning
+  rules.
+* **book** (KDP Help): title + subtitle < 200 combined, description ≤ 4000,
+  7 keyword boxes, KDP title and keyword content rules (all verified), and a
+  50-character keyword box (unverified). Entity checks (other authors,
+  trademarks) and "title matches cover" are left to LLM/human review.
+
+`tests/test_recipes.py` pins every verified limit and rule to its exact
+URL. It also requires every limit to be either pinned as verified or
+explicitly listed as knowingly unverified.
 
 ## Deterministic utilities (v0.1)
 
@@ -200,7 +205,9 @@ means over the deduplicated keywords. Every per-keyword value is kept.
    kind mismatch).
 4. Each enabled rule → its check from the `CHECKS` registry: `word_repetition`,
    `prohibited_terms` (plural-folded, whole-phrase, checked per segment),
-   `disallowed_characters`, `combined_length`, `backend_redundancy`.
+   `disallowed_characters`, `combined_length`, `backend_repetition` (repeats
+   within the backend field) and `backend_visible_overlap` (backend words
+   already visible). Field-limit findings cite the per-limit source.
 
 A test asserts that `CHECKS` and `KNOWN_CHECKS` stay in sync.
 
@@ -240,13 +247,16 @@ later, behind configuration, with rate limiting and raw-response capture.
 
 ## Roadmap
 
-1. **v0.1 (this commit)**: local domain core and tests.
+1. **v0.1**: local domain core and tests.
+   **v0.1.1**: rule-source verification pass (2026-10-03).
 2. **v0.2**: decomposable keyword scoring, a local evidence store (JSONL or
    SQLite), provider Protocols with fixture fakes, and a planner `Proposal`
    model that links to evidence ids.
 3. **v0.3**: research orchestration driven by `research.priorities`, a CLI,
    and an end-to-end offline run that ends in a human-review report.
-4. **v0.4**: first live read-only providers (autocomplete, SP-API catalog),
+4. **v0.4**: first live read-only providers (autocomplete, SP-API catalog, and
+   SP-API Product Type Definitions to verify per-product-type limits for
+   bullets, description and generic keywords),
    then LLM generation with deterministic re-validation.
 5. **Later**: an approval-gated SP-API write path, more category recipes, and
    a multi-marketplace rules matrix.

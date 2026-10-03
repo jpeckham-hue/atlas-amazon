@@ -1,81 +1,36 @@
-# amazon-base: rules that apply to every Amazon detail page, whatever the category.
+# amazon-base: only what is genuinely shared by every Amazon recipe.
 #
-# PROVENANCE POLICY: every limit and rule cites a [sources.*] entry with an
-# `as_of` date and a `status`. "unverified" means the rule is attributed to an
-# Amazon source but nobody has re-checked it against that source on `as_of`.
-# Re-verify before relying on it, then set status = "verified" and bump as_of.
+# This recipe deliberately sets NO limits and NO compliance rules. Seller
+# Central product rules and KDP book rules are documented separately and
+# differ. For example, the Seller Central title requirements explicitly
+# exempt media product types (ABIS_BOOK, ABIS_EBOOKS). Each child recipe
+# cites its own sources.
+#
+# PROVENANCE POLICY (enforced by the loader):
+#   verified   = checked on `as_of` against an official Amazon policy page at `url`
+#   unverified = attributed but not confirmable from official docs; `note` says why
+#   heuristic  = a project convention, not an Amazon rule
+# Third-party or forum references go in `see_also` and never justify `verified`.
 
 id = "amazon-base"
-version = "0.1.0"
-description = "Marketplace-wide listing rules shared by every Amazon recipe."
-
-[sources.amazon-title-policy-2025]
-title = "Amazon Seller Central: product title requirements (policy update announced Jan 2025)"
-as_of = 2025-01-21
-status = "unverified"
-marketplace = "US"
-note = "Recalled from public announcements, not re-fetched. Category style guides may set lower limits."
-
-[sources.amazon-description-guidance]
-title = "Amazon Seller Central: product description field guidance"
-as_of = 2024-01-01
-status = "unverified"
-marketplace = "US"
-note = "Widely cited 2000-character description limit; varies by category template."
+version = "0.2.0"
+description = "Shared field vocabulary and default weights for every Amazon recipe."
 
 [sources.atlas-heuristic]
 title = "atlas-amazon editorial heuristic"
 as_of = 2026-10-03
 status = "heuristic"
-note = "A conservative project default, not an Amazon rule."
+note = "A project default, not an Amazon rule."
 
 [fields.title]
 kind = "text"
 required = true
-max_chars = 200
-source = "amazon-title-policy-2025"
 
 [fields.description]
 kind = "text"
-max_chars = 2000
-source = "amazon-description-guidance"
-
-[rules.title_word_repetition]
-check = "word_repetition"
-fields = ["title"]
-max_repeats = 2
-exempt = ["a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"]
-severity = "error"
-source = "amazon-title-policy-2025"
-description = "The same word may not appear more than twice (articles, prepositions and conjunctions are exempt)."
-
-[rules.title_disallowed_characters]
-check = "disallowed_characters"
-fields = ["title"]
-characters = "!$?_{}^¬¦"
-severity = "error"
-source = "amazon-title-policy-2025"
-description = "Special characters used decoratively. A human must confirm any brand-name exception."
-
-[rules.promotional_terms]
-check = "prohibited_terms"
-fields = ["title"]
-terms = [
-  "best seller",
-  "bestseller",
-  "free shipping",
-  "hot sale",
-  "on sale",
-  "limited time",
-  "money back guarantee",
-  "top rated",
-]
-severity = "error"
-source = "amazon-title-policy-2025"
-description = "Promotional or subjective claims. The term list is curated by atlas and not exhaustive."
 
 [scoring.keyword]
-# Signals are each normalized to [0, 1]. Competition is inverted (1 - c) when scored.
+# Each signal is normalized to [0, 1]. Competition is inverted (1 - c) when scored.
 relevance = 0.35
 demand = 0.25
 competition = 0.15

@@ -1,79 +1,139 @@
-# book: KDP / Amazon Books metadata. There are no bullets. Discoverability
-# rests on title, subtitle, description, seven keyword boxes and categories.
+# book: KDP (ebook and print) metadata. Only KDP Help sources apply here.
+# The Seller Central product title requirements exempt media product types
+# (ABIS_BOOK, ABIS_EBOOKS), so none of them are inherited.
 
 id = "book"
 extends = "amazon-base"
-version = "0.1.0"
+version = "0.2.0"
 description = "Books published through KDP (ebook and print)."
 
-[sources.kdp-metadata-guidelines]
-title = "KDP Help: metadata guidelines for books"
-as_of = 2024-01-01
-status = "unverified"
-note = "Title + subtitle combined under 200 characters. The title must match the cover. Description up to 4000 characters."
+# --- Sources -----------------------------------------------------------------
 
-[sources.kdp-keywords-guidance]
-title = "KDP Help: make your book more discoverable with keywords"
-as_of = 2024-01-01
+[sources.kdp-metadata-guidelines]
+title = "KDP Help: Metadata Guidelines for Books"
+url = "https://kdp.amazon.com/en_US/help/topic/G201097560"
+as_of = 2026-10-03
+status = "verified"
+scope = "KDP ebooks and print books (en_US help)."
+note = "'Your title and subtitle together must be fewer than 200 characters' (so 199 is the maximum). Lists items prohibited in titles and keywords. Print titles must match the cover."
+
+[sources.kdp-description]
+title = "KDP Help: Write a Book Description"
+url = "https://kdp.amazon.com/en_US/help/topic/G201189630"
+as_of = 2026-10-03
+status = "verified"
+scope = "KDP ebooks and print books (en_US help)."
+note = "'We have a limit of 4000 characters for the description.' HTML tags count towards the limit."
+
+[sources.kdp-keywords]
+title = "KDP Help: Make Your Book More Discoverable with Keywords"
+url = "https://kdp.amazon.com/en_US/help/topic/G201298500"
+as_of = 2026-10-03
+status = "verified"
+scope = "KDP ebooks and print books (en_US help)."
+note = "'Use up to seven keywords or short phrases.' 'Keywords to avoid' is framed as guidance ('avoid'), except misleading metadata, which is zero-tolerance."
+
+[sources.kdp-keyword-box-length-unconfirmed]
+title = "KDP keyword box character limit (not stated in KDP Help)"
+as_of = 2026-10-03
 status = "unverified"
-note = "Seven keyword boxes, 50 characters each. No other authors' names, Amazon program names, or time-sensitive or promotional claims."
+scope = "KDP keyword fields."
+note = "The KDP keywords page only says 'keep an eye on the character limit in the text field' and gives no number. 50 characters per box is widely reported from the KDP form itself, but no official page states it."
+see_also = [
+  "https://kindlepreneur.com/7-kindle-keywords/",
+  "https://reedsy.com/blog/guide/kdp/amazon-keywords/",
+]
+
+[sources.sc-media-product-types]
+title = "Seller Central Help: Media product types (exempt from product title requirements)"
+url = "https://sellercentral.amazon.com/help/hub/reference/external/GMF8CVX6S6CF8MM2"
+as_of = 2026-10-03
+status = "verified"
+marketplace = "US"
+note = "Lists ABIS_BOOK and ABIS_EBOOKS. This is why the book recipe carries no Seller Central title rules."
+
+# --- Fields ------------------------------------------------------------------
 
 [fields.subtitle]
 kind = "text"
-max_chars = 200
-source = "kdp-metadata-guidelines"
+description = "No standalone limit is documented; see rules.title_subtitle_length."
 
 [fields.description]
 max_chars = 4000
-source = "kdp-metadata-guidelines"
+source = "kdp-description"
 
 [fields.keywords]
 kind = "list"
 max_count = 7
 item_max_chars = 50
-source = "kdp-keywords-guidance"
-description = "KDP backend keyword boxes."
+source = "kdp-keywords"
+limit_sources = { item_max_chars = "kdp-keyword-box-length-unconfirmed" }
+description = "KDP keyword boxes (backend)."
 
 [backend]
 field = "keywords"
 mode = "slots"
-source = "kdp-keywords-guidance"
+source = "kdp-keywords"
+
+# --- Title / subtitle rules (kdp-metadata-guidelines) --------------------------
 
 [rules.title_subtitle_length]
 check = "combined_length"
 fields = ["title", "subtitle"]
-max_chars = 200
+max_chars = 199
+severity = "error"
+source = "kdp-metadata-guidelines"
+description = "Combined length must be fewer than 200 characters."
+
+[rules.title_promotional_references]
+check = "prohibited_terms"
+fields = ["title", "subtitle"]
+terms = ["bestselling", "free"]
+severity = "warning"
+source = "kdp-metadata-guidelines"
+description = "Sales-rank and promotion references are prohibited, but a word like 'free' can be part of a genuine title, so a human must confirm (warning)."
+
+[rules.title_html_tags]
+check = "disallowed_characters"
+fields = ["title", "subtitle"]
+characters = "<>"
+severity = "error"
+source = "kdp-metadata-guidelines"
+description = "HTML tags are prohibited. Angle brackets are used as a deterministic proxy."
+
+# --- Keyword rules ----------------------------------------------------------
+
+[rules.keyword_promotional_references]
+check = "prohibited_terms"
+fields = ["keywords"]
+terms = ["bestselling", "free"]
+severity = "error"
+source = "kdp-metadata-guidelines"
+description = "Prohibited as keywords. Other authors' names and books need entity checks (LLM/human)."
+
+[rules.keyword_html_tags]
+check = "disallowed_characters"
+fields = ["keywords"]
+characters = "<>"
 severity = "error"
 source = "kdp-metadata-guidelines"
 
-# A book title must match the cover exactly, so these marketplace title rules
-# don't apply. Promotional terms still do.
-[rules.title_word_repetition]
-enabled = false
-
-[rules.title_disallowed_characters]
-enabled = false
-
-[rules.promotional_terms]
-fields = ["title", "subtitle"]
-
-[rules.kdp_keyword_terms]
+[rules.keyword_avoid_terms]
 check = "prohibited_terms"
 fields = ["keywords"]
-terms = [
-  "free",
-  "bestselling",
-  "best seller",
-  "bestseller",
-  "on sale",
-  "new release",
-  "available now",
-  "kindle unlimited",
-  "kdp select",
-]
-severity = "error"
-source = "kdp-keywords-guidance"
-description = "Other authors' names are also prohibited. That needs entity judgment, so it's left to LLM/human review."
+terms = ["new", "on sale", "available now", "kindle unlimited", "kdp select", "book"]
+severity = "warning"
+source = "kdp-keywords"
+description = "Examples from 'Keywords to avoid': time-sensitive statements, Amazon program names, and information common to most items. Framed as guidance, so a warning."
+
+[rules.keyword_quotation_marks]
+check = "disallowed_characters"
+fields = ["keywords"]
+characters = "\"“”"
+severity = "warning"
+source = "kdp-keywords"
+
+# --- Scoring / research --------------------------------------------------------
 
 [scoring.keyword]
 relevance = 0.40

@@ -20,11 +20,14 @@ from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
+from urllib.parse import urlparse
 
 from atlas_amazon.models import Severity, SourceRef, SourceStatus
 from atlas_amazon.recipes.schema import (
+    BACKEND_CHECKS,
     BACKEND_MODES,
     FIELD_KINDS,
+    FIELD_LIMITS,
     KEYWORD_SIGNALS,
     KNOWN_CHECKS,
     BackendSpec,
@@ -36,21 +39,42 @@ from atlas_amazon.recipes.schema import (
 _RECIPE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _LEAF_ONLY = frozenset({"id", "extends", "version", "description"})
 _TOP_LEVEL = frozenset({"sources", "fields", "rules", "backend", "scoring", "research"})
-_SOURCE_KEYS = frozenset({"title", "as_of", "status", "url", "marketplace", "note"})
-_FIELD_LIMITS = (
-    "max_chars",
-    "max_bytes",
-    "min_count",
-    "max_count",
-    "item_max_chars",
-    "item_max_bytes",
+_SOURCE_KEYS = frozenset(
+    {"title", "as_of", "status", "url", "marketplace", "scope", "note", "see_also"}
 )
+_FIELD_LIMITS = FIELD_LIMITS
 _LIST_ONLY_LIMITS = frozenset({"min_count", "max_count", "item_max_chars", "item_max_bytes"})
 _TEXT_ONLY_LIMITS = frozenset({"max_chars", "max_bytes"})
-_FIELD_KEYS = frozenset({"kind", "required", "source", "description", *_FIELD_LIMITS})
+_FIELD_KEYS = frozenset(
+    {"kind", "required", "source", "limit_sources", "description", *_FIELD_LIMITS}
+)
 _RULE_META = frozenset({"check", "severity", "source", "fields", "enabled", "description"})
 _BACKEND_KEYS = frozenset({"field", "mode", "source", "count_spaces", "stopwords"})
 _OPTIONAL_PARAMS: Mapping[str, frozenset[str]] = {"word_repetition": frozenset({"exempt"})}
+
+
+# Hosts whose pages may back a `verified` source. Anything else (forums,
+# blogs, tool vendors) can only appear in `see_also`.
+OFFICIAL_HOSTS = frozenset(
+    {
+        "sellercentral.amazon.com",
+        "kdp.amazon.com",
+        "advertising.amazon.com",
+        "developer-docs.amazon.com",
+    }
+)
+# Official hosts serve help articles and also user forums; forum threads are
+# not policy documents even when posted by Amazon staff.
+_NON_POLICY_PATHS = ("/seller-forums/", "/forums/")
+
+
+def is_official_policy_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname in OFFICIAL_HOSTS
+        and not any(parsed.path.startswith(p) for p in _NON_POLICY_PATHS)
+    )
 
 
 class RecipeError(ValueError):
@@ -174,14 +198,23 @@ def _build_sources(rid: str, raw: Any) -> dict[str, SourceRef]:
             raise _fail(
                 rid, f"{path}.status", f"must be one of {[s.value for s in SourceStatus]}"
             ) from None
+        url = entry.get("url")
+        if status is SourceStatus.VERIFIED and not (
+            isinstance(url, str) and is_official_policy_url(url)
+        ):
+            raise _fail(rid, f"{path}.url", "verified sources need an official Amazon policy URL")
+        if status is SourceStatus.UNVERIFIED and not entry.get("note"):
+            raise _fail(rid, f"{path}.note", "unverified sources must explain why")
         sources[sid] = SourceRef(
             id=sid,
             title=entry["title"],
             as_of=as_of,
             status=status,
-            url=entry.get("url"),
+            url=url,
             marketplace=entry.get("marketplace"),
+            scope=entry.get("scope"),
             note=entry.get("note"),
+            see_also=_str_list(rid, f"{path}.see_also", entry.get("see_also", [])),
         )
     return sources
 
@@ -203,7 +236,12 @@ def _build_field(rid: str, name: str, raw: Any, sources: Mapping[str, SourceRef]
     source = None
     if "source" in raw:
         source = _source_ref(rid, f"{path}.source", raw["source"], sources)
-    elif limits:
+    limit_sources = {}
+    for limit, sid in _table(rid, f"{path}.limit_sources", raw.get("limit_sources", {})).items():
+        if limit not in limits:
+            raise _fail(rid, f"{path}.limit_sources", f"{limit!r} is not a limit set on this field")
+        limit_sources[limit] = _source_ref(rid, f"{path}.limit_sources.{limit}", sid, sources)
+    if source is None and set(limits) - set(limit_sources):
         raise _fail(rid, path, "limits require a source (no limit without provenance)")
     required = raw.get("required", False)
     if not isinstance(required, bool):
@@ -213,6 +251,7 @@ def _build_field(rid: str, name: str, raw: Any, sources: Mapping[str, SourceRef]
         kind=kind,
         required=required,
         source=source,
+        limit_sources=MappingProxyType(limit_sources),
         description=raw.get("description", ""),
         **limits,
     )
@@ -240,7 +279,7 @@ def _build_rule(
         raise _fail(rid, f"{path}.source", "every rule must cite a source")
     source = _source_ref(rid, f"{path}.source", raw["source"], sources)
     rule_fields = _str_list(rid, f"{path}.fields", raw.get("fields", []))
-    if check != "backend_redundancy" and not rule_fields:
+    if check not in BACKEND_CHECKS and not rule_fields:
         raise _fail(rid, f"{path}.fields", "required for this check")
     params = {k: v for k, v in raw.items() if k not in _RULE_META}
     _check_keys(
@@ -250,7 +289,7 @@ def _build_rule(
         if required not in params:
             raise _fail(rid, f"{path}.{required}", "required param")
     referenced = list(rule_fields)
-    if check == "backend_redundancy":
+    if check == "backend_visible_overlap":
         referenced += _str_list(rid, f"{path}.visible_fields", params["visible_fields"])
     for name in referenced:
         if name not in fields:
@@ -343,8 +382,8 @@ def _build(leaf: Mapping[str, Any], merged: Mapping[str, Any], lineage: tuple[st
         for rule_id, raw in _table(rid, "rules", merged.get("rules", {})).items()
     }
     backend = _build_backend(rid, merged.get("backend"), fields, sources)
-    if backend is None and any(r.check == "backend_redundancy" for r in rules.values()):
-        raise _fail(rid, "rules", "backend_redundancy requires a [backend] section")
+    if backend is None and any(r.check in BACKEND_CHECKS for r in rules.values()):
+        raise _fail(rid, "rules", "backend checks require a [backend] section")
 
     scoring = _table(rid, "scoring", merged.get("scoring", {}))
     _check_keys(rid, "scoring", scoring, frozenset({"keyword", "coverage"}))

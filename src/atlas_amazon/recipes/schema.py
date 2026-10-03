@@ -18,8 +18,21 @@ KNOWN_CHECKS: Mapping[str, tuple[str, ...]] = {
     "prohibited_terms": ("terms",),
     "disallowed_characters": ("characters",),
     "combined_length": ("max_chars",),
-    "backend_redundancy": ("visible_fields",),
+    "backend_repetition": (),
+    "backend_visible_overlap": ("visible_fields",),
 }
+
+# Checks that operate on the recipe's backend field rather than on `fields`.
+BACKEND_CHECKS = frozenset({"backend_repetition", "backend_visible_overlap"})
+
+FIELD_LIMITS = (
+    "max_chars",
+    "max_bytes",
+    "min_count",
+    "max_count",
+    "item_max_chars",
+    "item_max_bytes",
+)
 
 FIELD_KINDS = frozenset({"text", "list"})
 BACKEND_MODES = frozenset({"bytes", "slots"})
@@ -37,7 +50,13 @@ class FieldSpec:
     item_max_chars: int | None = None
     item_max_bytes: int | None = None
     source: SourceRef | None = None
+    # Per-limit provenance overriding `source`, for fields whose limits are
+    # documented in different places or verified to different degrees.
+    limit_sources: Mapping[str, SourceRef] = field(default_factory=dict)
     description: str = ""
+
+    def source_for(self, limit: str) -> SourceRef | None:
+        return self.limit_sources.get(limit, self.source)
 
 
 @dataclass(frozen=True, slots=True)

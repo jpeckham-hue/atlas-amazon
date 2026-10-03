@@ -1,24 +1,68 @@
-# physical-product: generic Seller Central catalog item. Category-specific
-# recipes (e.g. apparel, kitchen) should extend this one.
+# physical-product: a generic Seller Central catalog item (US store).
+# Category-specific recipes (e.g. apparel, kitchen) should extend this one.
 
 id = "physical-product"
 extends = "amazon-base"
-version = "0.1.0"
-description = "Generic physical product sold through Seller Central."
+version = "0.2.0"
+description = "Generic non-media product sold through Seller Central (US)."
 
-[sources.amazon-bullet-guidance]
-title = "Amazon Seller Central: key product features (bullet points) guidance"
-as_of = 2024-01-01
+# --- Sources -----------------------------------------------------------------
+
+[sources.sc-title-requirements]
+title = "Seller Central Help: Product title requirements and guidelines"
+url = "https://sellercentral.amazon.com/help/hub/reference/external/GYTR6SYGFA5E3EQC"
+as_of = 2026-10-03
+status = "verified"
+marketplace = "US"
+scope = "All product types except media product types; all stores except Saudi Arabia, Egypt, Türkiye and the UAE."
+note = "75-character limit in effect from 2026-07-27, replacing the 200-character rule of 2025-01-21. Also introduces the 125-character Item highlights field."
+see_also = [
+  "https://sellercentral.amazon.com/seller-forums/discussions/t/145b6d0f-999c-4555-896c-c694bda2e470",
+  "https://sellercentral.amazon.com/seller-forums/discussions/t/b2b15728-0d43-453e-974f-59eb63f73059",
+]
+
+[sources.sc-bullet-requirements]
+title = "Seller Central Help: Product bullet point requirements"
+url = "https://sellercentral.amazon.com/help/hub/reference/external/GX5L8BF8GLMML6CX"
+as_of = 2026-10-03
+status = "verified"
+marketplace = "US"
+note = "Lists prohibited bullet content. Does NOT state a maximum bullet count, and says character limits vary by product type."
+
+[sources.sc-bullet-limits-unconfirmed]
+title = "Bullet count and per-bullet length (not confirmed by Seller Central Help)"
+as_of = 2026-10-03
 status = "unverified"
 marketplace = "US"
-note = "Five bullets is standard. A 500-character per-bullet cap is common but category templates vary; Amazon style guidance favors shorter bullets."
+note = "The official bullet page says 'Bullet point character limits vary by product type' and gives no maximum count. 5 x 500 is a common default. The authoritative per-type values are in SP-API Product Type Definitions (bullet_point), which a later milestone will read."
 
-[sources.amazon-search-terms-guidance]
-title = "Amazon Seller Central: using search terms effectively"
-as_of = 2024-01-01
+[sources.sc-search-optimization]
+title = "Seller Central Help: Search optimization"
+url = "https://sellercentral.amazon.com/help/hub/reference/external/GNYWHX2TP7C8GXHK"
+as_of = 2026-10-03
+status = "verified"
+marketplace = "US"
+note = "'We limit the length of the Generic Keyword attribute to less than 250 bytes' (so 249 is the maximum). Best practices: no repeats, singular OR plural, no articles/prepositions, no temporary or subjective claims. The page does not say whether spaces count, so atlas counts them (conservative)."
+
+[sources.sc-description-unconfirmed]
+title = "Product description length (not confirmed by Seller Central Help)"
+as_of = 2026-10-03
 status = "unverified"
 marketplace = "US"
-note = "US generic keywords are limited to 250 bytes. Published guidance on whether spaces count has varied, so atlas counts them. It also advises against repeating words already in the title."
+note = "No official help page states a description limit. 2000 characters is widely reported but varies by product type. SP-API Product Type Definitions (product_description) is the authoritative source."
+see_also = ["https://sellercentral.amazon.com/forums/t/how-to-get-around-the-2000-character-limit-in-product-description/578064"]
+
+# --- Fields ------------------------------------------------------------------
+
+[fields.title]
+max_chars = 75
+source = "sc-title-requirements"
+
+[fields.item_highlights]
+kind = "text"
+max_chars = 125
+source = "sc-title-requirements"
+description = "Comma-separated phrases shown below the title (requires a title within the 75-character limit)."
 
 [fields.brand]
 kind = "text"
@@ -27,33 +71,146 @@ kind = "text"
 kind = "list"
 max_count = 5
 item_max_chars = 500
-source = "amazon-bullet-guidance"
+source = "sc-bullet-limits-unconfirmed"
+
+[fields.description]
+max_chars = 2000
+source = "sc-description-unconfirmed"
 
 [fields.search_terms]
 kind = "text"
-max_bytes = 250
-source = "amazon-search-terms-guidance"
-description = "Backend generic keywords (hidden from shoppers)."
+max_bytes = 249
+source = "sc-search-optimization"
+description = "Generic Keyword attribute (hidden backend search terms); must be less than 250 bytes."
 
 [backend]
 field = "search_terms"
 mode = "bytes"
 count_spaces = true
+# The page lists "a", "and", "or", "the", "with" and says "articles, prepositions,
+# and other short words". The remaining entries are common prepositions.
 stopwords = ["a", "an", "and", "by", "for", "of", "or", "the", "to", "with"]
-source = "amazon-search-terms-guidance"
+source = "sc-search-optimization"
 
-[rules.promotional_terms]
-# Inherits terms and severity from amazon-base, widened to bullets.
-fields = ["title", "bullets"]
+# --- Title rules (verified, sc-title-requirements) -----------------------------
 
-[rules.backend_redundancy]
-check = "backend_redundancy"
-visible_fields = ["title", "bullets", "brand"]
+[rules.title_word_repetition]
+check = "word_repetition"
+fields = ["title"]
+max_repeats = 2
+exempt = ["a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor", "of", "on", "or", "over", "so", "the", "to", "with", "yet"]
+severity = "error"
+source = "sc-title-requirements"
+description = "The same word may not appear more than twice. Prepositions, articles and conjunctions are exempt; brand names are NOT."
+
+[rules.title_disallowed_characters]
+check = "disallowed_characters"
+fields = ["title"]
+characters = "!$?_{}^¬¦"
+severity = "error"
+source = "sc-title-requirements"
+description = "Brand names containing these characters belong in the Brand field, which is exempt."
+
+[rules.title_promotional_phrases]
+check = "prohibited_terms"
+fields = ["title"]
+terms = ["free shipping", "100% quality guaranteed"]
+severity = "error"
+source = "sc-title-requirements"
+description = "Examples taken verbatim from the requirement. Other promotional phrases need semantic review."
+
+[rules.title_restricted_phrases]
+check = "prohibited_terms"
+fields = ["title"]
+terms = ["FSA/HSA eligible"]
+severity = "error"
+source = "sc-title-requirements"
+
+[rules.title_subjective_commentary]
+check = "prohibited_terms"
+fields = ["title"]
+terms = ["hot item", "best seller"]
 severity = "warning"
-source = "amazon-search-terms-guidance"
-description = "Backend words that repeat visible text, or each other, waste the byte budget."
+source = "sc-title-requirements"
+description = "A best-practice guideline (not a listed requirement), so a warning."
+
+[rules.title_promotional_extended]
+check = "prohibited_terms"
+fields = ["title"]
+terms = ["bestseller", "hot sale", "on sale", "limited time", "money back guarantee", "top rated"]
+severity = "warning"
+source = "atlas-heuristic"
+description = "Phrases atlas treats as promotional or subjective. Not an Amazon list."
+
+# --- Bullet rules (verified, sc-bullet-requirements) ---------------------------
+
+[rules.bullet_prohibited_claims]
+check = "prohibited_terms"
+fields = ["bullets"]
+terms = [
+  "eco-friendly",
+  "environmentally friendly",
+  "ecologically friendly",
+  "anti-microbial",
+  "anti-bacterial",
+  "made from bamboo",
+  "contains bamboo",
+  "made from soy",
+  "contains soy",
+]
+severity = "error"
+source = "sc-bullet-requirements"
+
+[rules.bullet_guarantee_information]
+check = "prohibited_terms"
+fields = ["bullets"]
+terms = ["full refund", "if not satisfied, send it back", "unconditional guarantee with no limit"]
+severity = "error"
+source = "sc-bullet-requirements"
+
+[rules.bullet_placeholder_text]
+check = "prohibited_terms"
+fields = ["bullets"]
+terms = ["not applicable", "n/a", "not eligible", "yet to decide", "to be decided", "TBD", "copy pending"]
+severity = "error"
+source = "sc-bullet-requirements"
+description = "Bare 'NA' is omitted because whole-word matching on 'na' is too noisy."
+
+[rules.bullet_special_characters]
+check = "disallowed_characters"
+fields = ["bullets"]
+characters = "™®€…†‡¢£¥©±~"
+severity = "error"
+source = "sc-bullet-requirements"
+description = "Characters from the official list (two garbled entries on the page are omitted). Emoji detection is not yet implemented."
+
+# --- Backend rules (verified, sc-search-optimization) --------------------------
+
+[rules.backend_repetition]
+check = "backend_repetition"
+severity = "warning"
+source = "sc-search-optimization"
+description = "Avoid repeating keywords, and use singular OR plural (they are folded together)."
+
+[rules.backend_prohibited_terms]
+check = "prohibited_terms"
+fields = ["search_terms"]
+terms = ["new", "on sale now", "best", "cheapest"]
+severity = "error"
+source = "sc-search-optimization"
+description = "Temporary statements and subjective claims (examples verbatim). Brand names, ASINs and profanity need entity checks."
+
+[rules.backend_visible_overlap]
+check = "backend_visible_overlap"
+visible_fields = ["title", "item_highlights", "bullets", "brand"]
+severity = "warning"
+source = "atlas-heuristic"
+description = "Official guidance only says to avoid repeating keywords within search terms. Skipping words already visible is an atlas efficiency heuristic."
+
+# --- Scoring / research --------------------------------------------------------
 
 [scoring.coverage]
+item_highlights = 0.7
 bullets = 0.6
 search_terms = 0.3
 

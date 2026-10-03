@@ -26,8 +26,15 @@ into its parts.
    author's name?". Their output always passes back through deterministic
    validation.
 4. **Dated, sourced rules.** Amazon's rules change. Every limit and rule in a
-   recipe cites a source with an `as_of` date and a status (`verified`,
-   `unverified` or `heuristic`). Nothing in v0.1 is marked `verified` yet.
+   recipe cites a source with an `as_of` date and a status:
+   * `verified`: confirmed against an official Amazon or KDP help page
+     (the loader requires the URL);
+   * `unverified`: not confirmable from official docs (the note explains
+     why);
+   * `heuristic`: an atlas convention, always a warning.
+
+   See [docs/rule-sources.md](docs/rule-sources.md) for the current status
+   of every rule. The last verification pass was 2026-10-03.
 5. **Human approval before any write** to Amazon (SP-API listing updates, KDP
    changes).
 6. **Independent of atlas-pathfinder.** Some architectural ideas are shared,
@@ -40,10 +47,19 @@ fields, limits, audit rules, backend keyword budgets, scoring weights and
 research priorities. A recipe can `extends` one parent:
 
 ```
-amazon-base
-├── book              (KDP: title+subtitle, 4000-char description, 7×50 keyword slots)
-└── physical-product  (Seller Central: bullets, 250-byte search terms)
+amazon-base           (shared vocabulary and weights only; no limits or rules)
+├── book              (KDP Help: title+subtitle < 200, description ≤ 4000, 7 keyword boxes)
+└── physical-product  (Seller Central US: title ≤ 75, item highlights ≤ 125,
+                       bullets, search terms < 250 bytes)
 ```
+
+Current verified values at a glance (details and unverified items in
+[docs/rule-sources.md](docs/rule-sources.md)):
+
+| | Verified (official, 2026-10-03) | Still unverified |
+|---|---|---|
+| physical-product | title 75, item highlights 125, search terms 249 bytes, title, bullet and search-term content rules | bullet count (5) and length (500), description (2000), whether spaces count in bytes |
+| book | title+subtitle 199, description 4000, 7 keywords, title and keyword content rules | 50-char keyword box |
 
 ## Quick start
 

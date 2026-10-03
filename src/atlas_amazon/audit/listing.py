@@ -42,13 +42,10 @@ def find_disallowed_characters(text: str, characters: str) -> list[str]:
 
 
 def _length_findings(
-    rule_prefix: str,
-    label: str,
-    text: str,
-    max_chars: int | None,
-    max_bytes: int | None,
-    spec: FieldSpec,
+    rule_prefix: str, label: str, text: str, spec: FieldSpec, chars_attr: str, bytes_attr: str
 ) -> list[Finding]:
+    max_chars = getattr(spec, chars_attr)
+    max_bytes = getattr(spec, bytes_attr)
     findings = []
     chars = len(text)
     if max_chars is not None and chars > max_chars:
@@ -60,7 +57,7 @@ def _length_findings(
                 field=spec.name,
                 observed=chars,
                 limit=max_chars,
-                source=spec.source,
+                source=spec.source_for(chars_attr),
             )
         )
     size = len(text.encode("utf-8"))
@@ -73,7 +70,7 @@ def _length_findings(
                 field=spec.name,
                 observed=size,
                 limit=max_bytes,
-                source=spec.source,
+                source=spec.source_for(bytes_attr),
             )
         )
     return findings
@@ -86,7 +83,7 @@ def check_field_limits(value: FieldValue, spec: FieldSpec) -> list[Finding]:
     if spec.kind == "text":
         if not isinstance(value, str):
             return [Finding(f"{prefix}.kind", Severity.ERROR, f"{name} must be text", field=name)]
-        return _length_findings(prefix, name, value, spec.max_chars, spec.max_bytes, spec)
+        return _length_findings(prefix, name, value, spec, "max_chars", "max_bytes")
 
     if isinstance(value, str):
         return [Finding(f"{prefix}.kind", Severity.ERROR, f"{name} must be a list", field=name)]
@@ -101,7 +98,7 @@ def check_field_limits(value: FieldValue, spec: FieldSpec) -> list[Finding]:
                 field=name,
                 observed=count,
                 limit=spec.max_count,
-                source=spec.source,
+                source=spec.source_for("max_count"),
             )
         )
     if spec.min_count is not None and count < spec.min_count:
@@ -113,12 +110,12 @@ def check_field_limits(value: FieldValue, spec: FieldSpec) -> list[Finding]:
                 field=name,
                 observed=count,
                 limit=spec.min_count,
-                source=spec.source,
+                source=spec.source_for("min_count"),
             )
         )
     for i, item in enumerate(value):
         findings += _length_findings(
-            f"{prefix}.item", f"{name}[{i}]", item, spec.item_max_chars, spec.item_max_bytes, spec
+            f"{prefix}.item", f"{name}[{i}]", item, spec, "item_max_chars", "item_max_bytes"
         )
     return findings
 
@@ -182,37 +179,50 @@ def _check_combined_length(listing: Listing, rule: RuleSpec, recipe: Recipe) -> 
     return [_finding(rule, None, f"{joined} is {total} characters (limit {limit})", total, limit)]
 
 
-def _check_backend_redundancy(listing: Listing, rule: RuleSpec, recipe: Recipe) -> list[Finding]:
+def _backend_tokens(listing: Listing, recipe: Recipe) -> tuple[str, list[tuple[str, str]]]:
+    """(backend field name, [(token, folded key)]) with recipe stopwords removed."""
     assert recipe.backend is not None  # guaranteed by the loader
     backend = recipe.backend.field_name
     stop = {fold_plural(t) for w in recipe.backend.stopwords for t in tokenize(w)}
+    pairs = [
+        (token, key)
+        for segment in listing.segments(backend)
+        for token in tokenize(segment)
+        if (key := fold_plural(token)) not in stop
+    ]
+    return backend, pairs
+
+
+def _check_backend_repetition(listing: Listing, rule: RuleSpec, recipe: Recipe) -> list[Finding]:
+    """Words (singular/plural folded together) repeated within the backend field."""
+    backend, pairs = _backend_tokens(listing, recipe)
+    seen: set[str] = set()
+    repeated: dict[str, None] = {}
+    for token, key in pairs:
+        if key in seen:
+            repeated[token] = None
+        seen.add(key)
+    if not repeated:
+        return []
+    words = list(repeated)
+    return [_finding(rule, backend, f"backend repeats its own words: {words}", words)]
+
+
+def _check_backend_visible_overlap(
+    listing: Listing, rule: RuleSpec, recipe: Recipe
+) -> list[Finding]:
+    """Backend words that already appear in visible listing fields."""
+    backend, pairs = _backend_tokens(listing, recipe)
     visible = {
         fold_plural(t)
         for name in rule.params["visible_fields"]
         for seg in listing.segments(name)
         for t in tokenize(seg)
     }
-    in_visible: dict[str, None] = {}
-    repeated: dict[str, None] = {}
-    seen: set[str] = set()
-    for segment in listing.segments(backend):
-        for token in tokenize(segment):
-            key = fold_plural(token)
-            if key in stop:
-                continue
-            if key in visible:
-                in_visible[token] = None
-            if key in seen:
-                repeated[token] = None
-            seen.add(key)
-    findings = []
-    if in_visible:
-        words = list(in_visible)
-        findings.append(_finding(rule, backend, f"backend repeats visible words: {words}", words))
-    if repeated:
-        words = list(repeated)
-        findings.append(_finding(rule, backend, f"backend repeats its own words: {words}", words))
-    return findings
+    overlap = list(dict.fromkeys(token for token, key in pairs if key in visible))
+    if not overlap:
+        return []
+    return [_finding(rule, backend, f"backend repeats visible words: {overlap}", overlap)]
 
 
 CheckFn = Callable[[Listing, RuleSpec, Recipe], list[Finding]]
@@ -222,7 +232,8 @@ CHECKS: dict[str, CheckFn] = {
     "prohibited_terms": _check_prohibited_terms,
     "disallowed_characters": _check_disallowed_characters,
     "combined_length": _check_combined_length,
-    "backend_redundancy": _check_backend_redundancy,
+    "backend_repetition": _check_backend_repetition,
+    "backend_visible_overlap": _check_backend_visible_overlap,
 }
 
 
