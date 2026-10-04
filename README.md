@@ -11,8 +11,9 @@ into its parts.
 
 > Status: **v0.10: first read-only market-data adapter.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
-> for a book or a product listing, from fixture data, with every number
-> traced to evidence. Semantic judgments (relevance, intent, entity,
+> for a book or a product listing, from fixture data (optionally with
+> recorded or live SP-API catalog listings as competitor evidence), with
+> every number traced to evidence. Semantic judgments (relevance, intent, entity,
 > equivalence) and review themes can come from fixtures, from an LLM
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
@@ -27,7 +28,7 @@ into its parts.
 > ([docs/baselines/market_v0.10_synthetic.md](docs/baselines/market_v0.10_synthetic.md)
 > shows the comparison on synthetic responses); the 4-call live slice
 > (`scripts/record_live_market.py`) has not run because no SP-API
-> credentials are provisioned yet.
+> credentials are provisioned yet; see [docs/sp-api-setup.md](docs/sp-api-setup.md).
 >
 > In v0.9 (offline, no live spend): the prompt separates intent (what the
 > shopper is trying to do) from relevance (whether that matches this product);
@@ -307,6 +308,9 @@ result = scenario.with_providers(catalog_search=market).run()
 ```
 
 Replay with `ReplayHttpTransport(path)`; tests use `ScriptedHttpTransport`.
+Check what is missing locally, without network calls or printing values, with
+`python scripts/record_live_market.py --prereqs`. Provisioning steps:
+[docs/sp-api-setup.md](docs/sp-api-setup.md).
 Catalog results are competitor listings, not demand: no search volume,
 conversion or ad data, and catalog order is not search rank. See
 [docs/architecture.md](docs/architecture.md#live-market-data-sp-api-catalog-v010).
@@ -389,14 +393,15 @@ src/atlas_amazon/
   evidence/   identity, serialization, store Protocol, JSONL store
   providers/  Catalog/CatalogSearch/KeywordData/Suggestion/Review Protocols,
               fixture fakes, sp_api/ (read-only SP-API catalog + HTTP record/replay)
-  planner/    Proposal + validate_proposal, backend plan, gap recommendations
+  planner/    Proposal + validate_proposal, backend plan, gap recommendations,
+              feature-support gate
   judgments/  JudgmentRequest, judgment Evidence contract, parse_judgment
   reviews/    review-theme Evidence, summaries, listing opportunities
   semantic/   LLM providers (batched + tiered, or one call each), escalation,
               output budgets, call plans, deterministic rules, prompts,
               cache, record/replay, usage limits, human overrides,
               evaluation, benchmark
-  research/   ResearchRun orchestration, priority tasks, scenarios
+  research/   ResearchRun orchestration, priority tasks, scenarios, market comparison
   report/     report dict / JSON / Markdown (formatting only)
 ```
 

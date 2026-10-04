@@ -33,13 +33,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
+from atlas_amazon import __version__
 from atlas_amazon.jsonvalue import canonical_json, thaw
 from atlas_amazon.semantic.records import ChecksummedJsonl, ensure_no_secrets
 
 LIVE_MARKET_FLAG = "ATLAS_ALLOW_LIVE_MARKET"
 LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token"
 CREDENTIAL_ENV = ("SP_API_LWA_CLIENT_ID", "SP_API_LWA_CLIENT_SECRET", "SP_API_REFRESH_TOKEN")
-USER_AGENT = "atlas-amazon/0.10 (Language=Python)"
+USER_AGENT = f"atlas-amazon/{__version__} (Language=Python)"
 # Response headers kept in recordings (no secrets): request id and rate limit.
 KEPT_HEADERS = ("x-amzn-requestid", "x-amzn-ratelimit-limit")
 
@@ -168,10 +169,19 @@ class LiveSpApiTransport:
         ).encode("utf-8")
         request = urllib.request.Request(LWA_TOKEN_URL, data=body, method="POST")
         request.add_header("Content-Type", "application/x-www-form-urlencoded")
-        with self._open(request, timeout=self._timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        token = data["access_token"]
-        lifetime = float(data.get("expires_in", 3600))
+        try:
+            with self._open(request, timeout=self._timeout) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:  # e.g. 400 invalid_grant, 401 invalid_client
+            raise HttpTransportError(f"LWA token exchange failed: {_lwa_error(exc)}") from None
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            token = data["access_token"]
+            lifetime = float(data.get("expires_in", 3600))
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise HttpTransportError("LWA token exchange failed: unexpected response") from None
+        if not isinstance(token, str) or not token:
+            raise HttpTransportError("LWA token exchange failed: empty access token")
         self._token = (token, time.monotonic() + max(60.0, lifetime - 60.0))
         return token
 
@@ -204,6 +214,15 @@ class LiveSpApiTransport:
             retrieved_at=self._clock().isoformat(),
             transport=self.name,
         )
+
+
+def _lwa_error(exc: urllib.error.HTTPError) -> str:
+    """HTTP status plus LWA's `error` code (e.g. invalid_grant); never echoes the request."""
+    try:
+        code = json.loads(exc.read().decode("utf-8")).get("error")
+    except (ValueError, AttributeError, OSError):
+        code = None
+    return f"HTTP {exc.code}" + (f" {code}" if isinstance(code, str) else "")
 
 
 class ScriptedHttpTransport:

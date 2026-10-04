@@ -34,8 +34,22 @@ _SECRET_PATTERNS = (
     re.compile(
         r"(?i)\b(x-api-key|api[_-]?key|authorization)\b\s*[\"':=]+\s*[\"']?[A-Za-z0-9._\-]{16,}"
     ),
+    # Login with Amazon (SP-API): access tokens, refresh tokens, client secrets.
+    re.compile(r"\bAtz[ar]\|[A-Za-z0-9_\-]{8,}"),
+    re.compile(r"\bamzn1\.oa2-cs\.v1\.[A-Za-z0-9]{16,}"),
 )
-_SECRET_FIELD_NAMES = frozenset({"api_key", "x-api-key", "authorization", "auth_token"})
+_SECRET_FIELD_NAMES = frozenset(
+    {
+        "api_key",
+        "x-api-key",
+        "authorization",
+        "auth_token",
+        "x-amz-access-token",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+    }
+)
 
 
 class RecordFileError(Exception):

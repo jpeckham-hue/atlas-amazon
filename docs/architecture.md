@@ -25,8 +25,8 @@ atlas-amazon should:
  input  ──▶ │ ProductInput (metadata, ASIN?, competitor ASINs, recipe_id)   │
             └───────────────┬───────────────────────────────────────────────┘
                             ▼
- providers  Catalog · KeywordData · Suggestion · Review Protocols (v0.2: fixture
-            fakes only; live SP-API / keyword vendor / autocomplete later)
+ providers  Catalog · CatalogSearch · KeywordData · Suggestion · Review Protocols;
+            fixture fakes, plus read-only SP-API catalog search (v0.10)
                             ▼
  evidence   Evidence(id, kind, provider, marketplace, retrieved_at, payload,
             source_url, subject, run_id); append-only, checksummed JSONL store
@@ -35,8 +35,8 @@ atlas-amazon should:
  (pure)     all deterministic and side-effect free; a proposal is valid only
             after it passes the audit and its evidence resolves
                             ▼
- semantic   LLM steps (relevance judgments, review themes, drafting copy)
- (planned)  every output goes back through deterministic validation
+ semantic   LLM judgments and review themes (v0.4+); copy drafting planned;
+            every output goes back through deterministic validation
                             ▼
  review     human approval gate: diff of current vs proposed + evidence trail
                             ▼
@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.9), `·` = planned.
+`✓` = exists (v0.10), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,7 +59,9 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
-│   ├── baselines/                 ✓ live baselines (v0.6 frozen, v0.7) and v0.8 calibration
+│   ├── baselines/                 ✓ live baselines (v0.6-v0.9), calibration, market reports
+│   ├── sp-api-setup.md            ✓ provisioning SP-API access for the live market slice
+│   ├── v0.11-plan.md              ✓ draft plan for the demand-data milestone
 │   ├── reviews/                   ✓ human review queue for disputed reference judgments
 │   ├── benchmarks/                ✓ semantic cost benchmark (v0.4b vs v0.5), golden
 │   ├── examples/                  ✓ golden example research reports
@@ -92,17 +94,20 @@ atlas-amazon/
 │   │   ├── store.py               ✓ EvidenceStore Protocol, errors, InMemoryEvidenceStore
 │   │   └── jsonl.py               ✓ append-only JsonlEvidenceStore
 │   ├── providers/
-│   │   ├── base.py                ✓ Catalog/KeywordData/Suggestion/Review Protocols
+│   │   ├── base.py                ✓ Catalog/CatalogSearch/KeywordData/Suggestion/Review
 │   │   ├── fixtures.py            ✓ fixture-backed fakes
-│   │   ├── sp_api.py              ·
-│   │   ├── autocomplete.py        ·
-│   │   └── nexscope.py            ·
+│   │   └── sp_api/                ✓ read-only SP-API (v0.10)
+│   │       ├── catalog.py         ✓ SpApiCatalogProvider, Evidence conversion, call plan
+│   │       ├── http.py            ✓ live (LWA) / recording / replay / scripted HTTP
+│   │       └── preflight.py       ✓ offline prerequisite check (never prints values)
 │   ├── planner/
 │   │   ├── proposal.py            ✓ Proposal, ProposalBasis, validate_proposal
-│   │   └── recommend.py           ✓ backend plan, keyword gaps, placement upgrades
+│   │   ├── recommend.py           ✓ backend plan, keyword gaps, placement upgrades
+│   │   └── support.py             ✓ feature-support gate (unsupported_by_product)
 │   ├── research/
 │   │   ├── run.py                 ✓ ResearchRun orchestration, ResearchResult
 │   │   ├── tasks.py               ✓ research priority -> task registry
+│   │   ├── market.py              ✓ market (catalog) vs fixture-only comparison
 │   │   └── scenarios.py           ✓ offline scenario loader
 │   ├── judgments/
 │   │   ├── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
@@ -136,6 +141,7 @@ atlas-amazon/
 │   │   └── render.py              ✓ report dict / JSON / Markdown (formatting only)
 │   ├── llm/                       · prompt contracts; outputs re-validated
 │   └── review/                    · approval records; publish is gated on approval
+├── scripts/                       ✓ opt-in live runners (semantic baselines, market slice)
 └── tests/                         ✓ one module per domain module; fixtures/ for fakes
 ```
 
@@ -335,16 +341,17 @@ and tamper-evident.
   * It is single-writer: there is no cross-process locking (documented
     limitation).
 
-## Providers (v0.2: protocols and fakes only)
+## Providers
 
 `providers/`. Each provider implements one narrow, `runtime_checkable`
 Protocol and returns `list[Evidence]`, never raw dicts:
 
-| Protocol | Method | Evidence kind | Future live adapter |
+| Protocol | Method | Evidence kind | Live adapter |
 |---|---|---|---|
-| `CatalogProvider` | `get_items(asins, *, marketplace, run_id)` | `catalog_item` | SP-API Catalog/Listings Items |
-| `KeywordDataProvider` | `keyword_metrics(keywords, *, marketplace, run_id)` | `keyword_metric` | Nexscope or similar |
-| `SuggestionProvider` | `suggestions(seed, *, marketplace, run_id)` | `autocomplete_suggestion` | Amazon autocomplete |
+| `CatalogProvider` | `get_items(asins, *, marketplace, run_id)` | `catalog_item` | `SpApiCatalogProvider` (v0.10) |
+| `CatalogSearchProvider` | `search(keywords, *, marketplace, run_id)` | `catalog_search` + `catalog_item` | `SpApiCatalogProvider` (v0.10) |
+| `KeywordDataProvider` | `keyword_metrics(keywords, *, marketplace, run_id)` | `keyword_metric` | none yet (v0.11 candidate, see [v0.11-plan.md](v0.11-plan.md)) |
+| `SuggestionProvider` | `suggestions(seed, *, marketplace, run_id)` | `autocomplete_suggestion` | none: no supportable access to Amazon autocomplete |
 | `ReviewProvider` | `reviews(asin, *, marketplace, run_id, limit)` | `review_sample` (one per review) | review data vendors |
 
 Conventions: `marketplace` is always required, and `run_id` is stamped on
@@ -1406,14 +1413,38 @@ Three questions stay separate: market opportunity (what the catalog shows
 sellers use), product relevance (the semantic judgments) and product truth
 (the seller's own information).
 
+### Hardening (offline follow-up)
+
+* Responses with a missing or naive `retrieved_at` are malformed; nothing is
+  stamped with an invented time.
+* Identifier lookups set `pageSize` to the group size (up to 20). The API
+  default of 10 would silently drop the rest of a 20-ASIN group.
+* Queries with more than 20 words (the API limit) are skipped and listed.
+* Items with blank titles are skipped.
+* `catalog_search` records `more_pages` (a `nextToken` was returned). Further
+  pages are never fetched.
+* LWA errors become `HttpTransportError` with the HTTP status and LWA `error`
+  code only, such as `HTTP 400 invalid_grant`. Malformed token responses
+  are reported the same way.
+* Failed responses (4xx/5xx) are recorded and replay identically. Transport
+  exceptions such as DNS failures or timeouts are not recorded and replay
+  as `replay_miss`. 429s are not retried, because the cap is the budget.
+* `providers/sp_api/preflight.py` (`--prereqs`) reports missing
+  prerequisites offline. It names them but never prints values.
+* `tests/test_live_market_v10.py` replays the live recordings once they
+  exist (it skips until then). It checks exact replay, attribution, the
+  unsupported-term block and that the report is current.
+
 ### Live slice (pending access)
 
 `scripts/record_live_market.py` handles the live slice:
 
 * **`--plan`** prints 4 catalog calls: 2 seeds × 2 scenarios, pageSize 10,
   capped at 2 per scenario, plus one token exchange, for $0.00.
+* **`--prereqs`** checks the environment and the recordings directory with
+  no network call. It never prints values.
 * **`--check`** verifies credentials with an LWA token exchange and makes no
-  catalog call.
+  catalog call. See [sp-api-setup.md](sp-api-setup.md).
 * **`--run`** records to `tests/fixtures/recordings/live/market_v10/`. It
   refuses a non-empty directory and stops after an authorization failure.
 
@@ -1469,12 +1500,11 @@ blocked.
     (SP-API Catalog Items search) with Evidence conversion, record/replay, a
     hard call cap, competitor-only integration and a market comparison. The
     live slice waits for SP-API access.
-12. **Next (recommended)**: provision SP-API access and record the 4-call live
-    slice (`scripts/record_live_market.py --run`). Then add one official
-    demand source under the same plan / cap / record / replay discipline,
-    such as Brand Analytics search terms (needs Brand Registry) or the Amazon
-    Ads keyword recommendations, so new catalog candidates can be scored on
-    demand. Known small items: book format claims ("large print") are not
+12. **Next (recommended)**: provision SP-API access ([sp-api-setup.md](sp-api-setup.md))
+    and record the 4-call live slice (`scripts/record_live_market.py --run`).
+    Then v0.11 ([v0.11-plan.md](v0.11-plan.md), draft): one official demand
+    source under the same plan / cap / record / replay discipline, so new
+    catalog candidates can be scored on demand. Known small items: book format claims ("large print") are not
     support-checked, and setting terms just below the 0.7 relevance-risk
     threshold can enter the top-N.
 13. **Later**: a minimal CLI, more read-only adapters (Product Type

@@ -16,29 +16,36 @@ Credentials come only from the environment: SP_API_LWA_CLIENT_ID,
 SP_API_LWA_CLIENT_SECRET, SP_API_REFRESH_TOKEN (a Selling Partner API app
 authorized for a seller account with catalog access). Live calls also need
 ATLAS_ALLOW_LIVE_MARKET=1. Credentials and access tokens are never printed,
-stored or recorded.
+stored or recorded. Setup: docs/sp-api-setup.md.
 
+    python scripts/record_live_market.py --prereqs # which prerequisites are missing; offline
     python scripts/record_live_market.py --plan    # print the plan and cap; no calls
-    python scripts/record_live_market.py --check   # credentials + LWA token exchange only
+    python scripts/record_live_market.py --check   # prerequisites + LWA token exchange only
     python scripts/record_live_market.py --run     # check, plan, record live, write report
+
+The report (docs/baselines/live_market_v0.10.md) is rebuilt from the
+recordings by tests/test_live_market_v10.py, which replays them offline.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 from atlas_amazon.evidence import InMemoryEvidenceStore
 from atlas_amazon.providers.sp_api import (
-    LIVE_MARKET_FLAG,
     LiveSpApiTransport,
     RecordingHttpTransport,
     SpApiCatalogProvider,
     render_market_plan,
 )
-from atlas_amazon.providers.sp_api.http import CREDENTIAL_ENV, HttpTransportError
+from atlas_amazon.providers.sp_api.http import HttpTransportError
+from atlas_amazon.providers.sp_api.preflight import (
+    market_prerequisites,
+    missing_prerequisites,
+    render_prerequisites,
+)
 from atlas_amazon.research import load_scenario
 from atlas_amazon.research.market import compare_market, render_market_report
 
@@ -49,6 +56,7 @@ REPORT = ROOT / "docs" / "baselines" / "live_market_v0.10.md"
 NAMES = ("book_cozy_mystery", "physical_water_bottle")
 MAX_CALLS_PER_SCENARIO = 2
 PAGE_SIZE = 10
+AUTH_FAILURES = ("http_401", "http_403")
 
 
 def market_provider(transport) -> SpApiCatalogProvider:
@@ -87,47 +95,67 @@ def fresh(out_dir: Path) -> bool:
 
 
 def preflight() -> str | None:
-    """None when credentials work for an LWA token exchange; otherwise the problem."""
-    if os.environ.get(LIVE_MARKET_FLAG) != "1":
-        return f"{LIVE_MARKET_FLAG}=1 is not set"
-    missing = [n for n in CREDENTIAL_ENV if not os.environ.get(n)]
+    """None when prerequisites are set and an LWA token exchange works; otherwise the problem."""
+    missing = missing_prerequisites(market_prerequisites())
     if missing:
-        return f"missing credentials: {', '.join(missing)}"
+        return f"missing prerequisites: {', '.join(missing)}"
     try:
         LiveSpApiTransport(allow_live=True)._access_token()
-    except (HttpTransportError, OSError, KeyError, ValueError) as exc:
+    except HttpTransportError as exc:  # messages carry status and LWA error code only
+        return str(exc)
+    except OSError as exc:
         return f"LWA token exchange failed: {type(exc).__name__}"
     return None
 
 
-def record(out_dir: Path) -> int:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    live = LiveSpApiTransport()
-    comparisons, calls = {}, 0
-    for name in NAMES:
-        sc = load_scenario(SCENARIOS / f"{name}.json")
-        baseline = sc.run()
-        provider = market_provider(RecordingHttpTransport(live, out_dir / f"{name}.jsonl"))
-        store = InMemoryEvidenceStore()
-        market = sc.with_providers(catalog_search=provider).run(store=store)
-        calls += provider.calls_made(sc.run_id)
-        for label, reason in provider.failures:
-            print(f"{name}: {label!r}: {reason}")
-        comparisons[name] = compare_market(baseline, market, store, provider=provider.name)
-        if any(r.startswith(("http_401", "http_403")) for _, r in provider.failures):
-            print("authorization failed; stopping before the next scenario")
-            break
+def run_scenario(name: str, transport):
+    """(provider, comparison) for one scenario with market data from `transport`."""
+    sc = load_scenario(SCENARIOS / f"{name}.json")
+    baseline = sc.run()
+    provider = market_provider(transport)
+    store = InMemoryEvidenceStore()
+    market = sc.with_providers(catalog_search=provider).run(store=store)
+    return provider, compare_market(baseline, market, store, provider=provider.name)
+
+
+def build_report(comparisons, calls: int, failures) -> str:
+    """The live market report; `failures` is {scenario: [(query, reason), ...]}."""
     header = [
         "> **Live, read-only.** SP-API `searchCatalogItems` (2022-04-01), US marketplace, one "
         f"first-page keyword search per seed (pageSize {PAGE_SIZE}). {calls} catalog calls, "
         "$0.00. Recordings: `tests/fixtures/recordings/live/market_v10/`. Catalog evidence "
         "only: no search volume, conversion or ad data; catalog order is not search rank.",
+        "",
+        "Failed requests and skipped items: "
+        + (
+            "; ".join(
+                f"{name} `{label}`: {reason}"
+                for name, items in failures.items()
+                for label, reason in items
+            )
+            or "none"
+        )
+        + ".",
     ]
-    REPORT.write_text(
-        render_market_report("Live market data (v0.10)", header, comparisons),
-        encoding="utf-8",
-        newline="\n",
-    )
+    return render_market_report("Live market data (v0.10)", header, comparisons)
+
+
+def record(out_dir: Path) -> int:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    live = LiveSpApiTransport()
+    comparisons, failures, calls = {}, {}, 0
+    for name in NAMES:
+        provider, comparisons[name] = run_scenario(
+            name, RecordingHttpTransport(live, out_dir / f"{name}.jsonl")
+        )
+        calls += provider.total_calls
+        failures[name] = list(provider.failures)
+        for label, reason in provider.failures:
+            print(f"{name}: {label!r}: {reason}")
+        if any(r.startswith(AUTH_FAILURES) for _, r in provider.failures):
+            print("authorization failed; stopping before the next scenario")
+            break
+    REPORT.write_text(build_report(comparisons, calls, failures), encoding="utf-8", newline="\n")
     print(f"live catalog calls: {calls}; report: {REPORT}")
     return 0
 
@@ -135,13 +163,20 @@ def record(out_dir: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--prereqs", action="store_true")
     mode.add_argument("--plan", action="store_true")
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--run", action="store_true")
     parser.add_argument("--dir", default="market_v10", help="recordings subdirectory under live/")
     args = parser.parse_args()
     out_dir = LIVE / args.dir
+    if args.prereqs:
+        prerequisites = market_prerequisites(recordings_dir=out_dir)
+        print("SP-API prerequisites (values are never shown):")
+        print(render_prerequisites(prerequisites))
+        return 0 if not missing_prerequisites(prerequisites) else 4
     if args.check:
+        print(render_prerequisites(market_prerequisites(recordings_dir=out_dir)))
         problem = preflight()
         print("SP-API check: " + ("OK" if problem is None else f"FAILED: {problem}"))
         return 0 if problem is None else 4

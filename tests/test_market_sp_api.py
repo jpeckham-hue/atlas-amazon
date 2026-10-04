@@ -16,6 +16,7 @@ from atlas_amazon.providers.sp_api import (
     LiveSpApiTransport,
     RecordingHttpTransport,
     ReplayHttpTransport,
+    ScriptedHttpTransport,
     SpApiCatalogProvider,
     UnsupportedMarketplace,
     render_market_plan,
@@ -340,12 +341,12 @@ class TestRecordReplay:
     def test_recordings_never_contain_credentials(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SP_API_LWA_CLIENT_ID", "amzn1.application-oa2-client.fakeid")
         monkeypatch.setenv("SP_API_LWA_CLIENT_SECRET", "fakesecret")
-        monkeypatch.setenv("SP_API_REFRESH_TOKEN", "Atzr|fakerefresh")
+        monkeypatch.setenv("SP_API_REFRESH_TOKEN", "Atzr|frt")
         live = LiveSpApiTransport(allow_live=True, rate_per_second=1000, opener=FakeOpener())
         path = tmp_path / "rec.jsonl"
         provider(RecordingHttpTransport(live, path)).search(["water bottle"], marketplace="US")
         text = path.read_text(encoding="utf-8")
-        for secret in ("fakeid", "fakesecret", "fakerefresh", "Atza|fakeaccess"):
+        for secret in ("fakeid", "fakesecret", "frt", "Atza|fake"):
             assert secret not in text
 
 
@@ -373,7 +374,7 @@ class FakeOpener:
     def __call__(self, request, timeout):
         self.requests.append(request)
         if request.full_url == "https://api.amazon.com/auth/o2/token":
-            body = json.dumps({"access_token": "Atza|fakeaccess", "expires_in": 3600})
+            body = json.dumps({"access_token": "Atza|fake", "expires_in": 3600})
             return FakeResponse(200, body.encode())
         body = json.dumps({"numberOfResults": 1, "items": BOTTLE["water bottle"][:1]})
         return FakeResponse(200, body.encode(), {"x-amzn-requestid": "req-1", "x-secret": "no"})
@@ -408,7 +409,7 @@ class TestLiveTransport:
         assert len(token_calls) == 1  # the access token is cached for the hour
         api = [r for r in opener.requests if "auth/o2/token" not in r.full_url]
         assert len(api) == 2
-        assert api[0].get_header("X-amz-access-token") == "Atza|fakeaccess"
+        assert api[0].get_header("X-amz-access-token") == "Atza|fake"
         assert api[0].get_header("User-agent").startswith("atlas-amazon/")
         assert of_kind(found, "catalog_item")[0].subject == "B0MKTW0001"
         assert p.calls_made(None) == 2
@@ -543,7 +544,7 @@ class TestLiveRunner:
         monkeypatch.setenv("ATLAS_ALLOW_LIVE_MARKET", "1")
         for name in ("SP_API_LWA_CLIENT_ID", "SP_API_LWA_CLIENT_SECRET", "SP_API_REFRESH_TOKEN"):
             monkeypatch.delenv(name, raising=False)
-        assert runner.preflight().startswith("missing credentials")
+        assert runner.preflight().startswith("missing prerequisites: SP_API_LWA_CLIENT_ID")
 
     def test_run_refuses_to_reuse_a_recordings_directory(self, tmp_path, monkeypatch):
         runner = load_runner()
@@ -576,3 +577,254 @@ def test_synthetic_market_report_is_current(market_runs):
         ROOT / "docs" / "baselines" / "market_v0.10_synthetic.md",
         render_market_report("Market data comparison (v0.10, synthetic)", header, comparisons),
     )
+
+
+# -- hardening (v0.10 follow-up) ----------------------------------------------------------
+
+
+def _timed(responder, when):
+    from dataclasses import replace
+
+    return ScriptedHttpTransport(lambda request: replace(responder(request), retrieved_at=when))
+
+
+class TestHardening:
+    @pytest.mark.parametrize("when", ["", "not a time", "2026-10-04T10:00:00"])
+    def test_missing_or_naive_response_time_is_malformed(self, when):
+        transport = _timed(fake_transport(BOTTLE).send, when)
+        p = provider(transport)
+        assert p.search(["water bottle"], marketplace="US") == []
+        assert p.failures == [("water bottle", "malformed: missing or naive retrieved_at")]
+
+    def test_identifier_page_size_covers_the_group(self):
+        transport = fake_transport(BOTTLE)
+        provider(transport).get_items([f"B0MKTX{i:04d}" for i in range(25)], marketplace="US")
+        assert [params(r)["pageSize"] for r in transport.requests] == ["20", "5"]
+
+    def test_queries_over_the_keyword_limit_are_skipped(self):
+        transport = fake_transport(BOTTLE)
+        long_query = " ".join(f"w{i}" for i in range(21))
+        p = provider(transport)
+        p.search([long_query, "water bottle"], marketplace="US")
+        assert len(transport.requests) == 1
+        assert (long_query, "skipped: more than 20 keywords") in p.failures
+
+    def test_blank_titles_are_skipped_and_titles_trimmed(self):
+        blank = sp_item("B0MKTW0010", "   ")
+        padded = sp_item("B0MKTW0011", "  Padded Bottle  ")
+        p = provider(fake_transport({"bottle": [blank, padded]}))
+        (item,) = of_kind(p.search(["bottle"], marketplace="US"), "catalog_item")
+        assert item.payload["title"] == "Padded Bottle"
+
+    def test_more_pages_are_flagged_never_fetched(self):
+        page = {"numberOfResults": 4000, "pagination": {"nextToken": "abc"}, "items": []}
+        transport = fake_transport({}, overrides={"bottle": failure(200, page)})
+        (search,) = provider(transport).search(["bottle"], marketplace="US")
+        assert search.payload["more_pages"] is True
+        assert search.payload["number_of_results"] == 4000
+        assert len(transport.requests) == 1
+        assert "pageToken" not in params(transport.requests[0])
+
+    def test_non_integer_result_counts_are_dropped(self):
+        body = {"numberOfResults": "many", "items": []}
+        transport = fake_transport({}, overrides={"bottle": failure(200, body)})
+        (search,) = provider(transport).search(["bottle"], marketplace="US")
+        assert search.payload["number_of_results"] is None
+        assert search.payload["more_pages"] is False
+
+    def test_unicode_survives_record_and_replay(self, tmp_path):
+        path = tmp_path / "rec.jsonl"
+        title = "Botella térmica \N{EN DASH} 1 L ☕"
+        item = sp_item("B0MKTW0012", title, ["Acero inoxidable"])
+        recorded = provider(RecordingHttpTransport(fake_transport({"botella": [item]}), path))
+        a = recorded.search(["botella"], marketplace="US")
+        b = provider(ReplayHttpTransport(path)).search(["botella"], marketplace="US")
+        assert a == b
+        assert of_kind(b, "catalog_item")[0].payload["title"] == title
+
+    def test_failed_responses_replay_identically(self, tmp_path):
+        path = tmp_path / "rec.jsonl"
+        overrides = {"cozy mystery": failure(503, None, text="Service Unavailable")}
+        live = provider(RecordingHttpTransport(fake_transport(BOOK, overrides=overrides), path))
+        a = live.search(["cozy mystery", "small town mystery"], marketplace="US", run_id="r")
+        replayed = provider(ReplayHttpTransport(path))
+        b = replayed.search(["cozy mystery", "small town mystery"], marketplace="US", run_id="r")
+        assert a == b
+        assert replayed.failures == live.failures
+        assert ("cozy mystery", "http_503") in live.failures
+
+    def test_live_market_disabled_is_never_swallowed(self, monkeypatch):
+        monkeypatch.delenv("ATLAS_ALLOW_LIVE_MARKET", raising=False)
+        sc = load_scenario(SCENARIOS / "book_cozy_mystery.json").with_providers(
+            catalog_search=provider(LiveSpApiTransport())
+        )
+        with pytest.raises(LiveMarketDisabled):
+            sc.run()
+
+    def test_unsupported_marketplace_fails_the_run_loudly(self):
+        from dataclasses import replace
+
+        sc = load_scenario(SCENARIOS / "book_cozy_mystery.json")
+        sc = replace(sc, product=replace(sc.product, marketplace="JP")).with_providers(
+            catalog=None, catalog_search=provider(fake_transport(BOOK))
+        )
+        with pytest.raises(UnsupportedMarketplace):
+            sc.run()
+
+    def test_total_calls_spans_runs(self):
+        p = provider(fake_transport(BOOK))
+        p.search(["cozy mystery"], marketplace="US", run_id="a")
+        p.search(["cozy mystery"], marketplace="US", run_id="b")
+        assert (p.calls_made("a"), p.calls_made("b"), p.total_calls) == (1, 1, 2)
+
+
+class LwaErrorOpener(FakeOpener):
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+
+    def __call__(self, request, timeout):
+        import io
+        import urllib.error
+
+        if "auth/o2/token" not in request.full_url:
+            return super().__call__(request, timeout)
+        self.requests.append(request)
+        if self.mode == "invalid_grant":
+            body = io.BytesIO(b'{"error":"invalid_grant","error_description":"bad"}')
+            raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {}, body)
+        if self.mode == "not_json":
+            return FakeResponse(200, b"<html>")
+        return FakeResponse(200, b'{"token_type":"bearer"}')
+
+
+class TestLwaErrors:
+    @pytest.fixture(autouse=True)
+    def creds(self, monkeypatch):
+        monkeypatch.setenv("SP_API_LWA_CLIENT_ID", "cid")
+        monkeypatch.setenv("SP_API_LWA_CLIENT_SECRET", "csecret")
+        monkeypatch.setenv("SP_API_REFRESH_TOKEN", "rtoken")
+
+    @pytest.mark.parametrize(
+        "mode, message",
+        [
+            ("invalid_grant", "LWA token exchange failed: HTTP 400 invalid_grant"),
+            ("not_json", "LWA token exchange failed: unexpected response"),
+            ("no_token", "LWA token exchange failed: unexpected response"),
+        ],
+    )
+    def test_token_errors_are_clear_and_secret_free(self, mode, message):
+        live = LiveSpApiTransport(allow_live=True, opener=LwaErrorOpener(mode))
+        with pytest.raises(HttpTransportError) as caught:
+            live._access_token()
+        assert str(caught.value) == message
+        for secret in ("cid", "csecret", "rtoken"):
+            assert secret not in str(caught.value)
+        p = provider(LiveSpApiTransport(allow_live=True, opener=LwaErrorOpener(mode)))
+        assert p.search(["water bottle"], marketplace="US") == []
+        assert p.failures == [("water bottle", "transport_error: HttpTransportError")]
+
+    def test_api_error_bodies_are_recorded_and_tokens_are_not(self, tmp_path):
+        import io
+        import urllib.error
+
+        class Throttled(FakeOpener):
+            def __call__(self, request, timeout):
+                if "auth/o2/token" in request.full_url:
+                    return super().__call__(request, timeout)
+                body = io.BytesIO(b'{"errors":[{"code":"QuotaExceeded","message":"x"}]}')
+                headers = {"x-amzn-requestid": "req-9", "x-amzn-ratelimit-limit": "5.0"}
+                raise urllib.error.HTTPError(request.full_url, 429, "Too Many", headers, body)
+
+        path = tmp_path / "rec.jsonl"
+        live = LiveSpApiTransport(allow_live=True, rate_per_second=1000, opener=Throttled())
+        p = provider(RecordingHttpTransport(live, path))
+        assert p.search(["water bottle"], marketplace="US") == []
+        assert p.failures == [("water bottle", "http_429 QuotaExceeded")]
+        text = path.read_text(encoding="utf-8")
+        assert "QuotaExceeded" in text and "req-9" in text
+        assert "Atza|fake" not in text
+
+    def test_only_safe_headers_are_recorded(self, tmp_path):
+        path = tmp_path / "rec.jsonl"
+        live = LiveSpApiTransport(allow_live=True, rate_per_second=1000, opener=FakeOpener())
+        provider(RecordingHttpTransport(live, path)).search(["water bottle"], marketplace="US")
+        text = path.read_text(encoding="utf-8")
+        assert "req-1" in text and "x-secret" not in text
+
+    def test_throttle_waits_between_calls(self, monkeypatch):
+        import atlas_amazon.providers.sp_api.http as http
+
+        waits = []
+        monkeypatch.setattr(http.time, "sleep", waits.append)
+        live = LiveSpApiTransport(allow_live=True, rate_per_second=5, opener=FakeOpener())
+        provider(live).search(["water bottle", "insulated water bottle"], marketplace="US")
+        assert len(waits) == 1 and 0 < waits[0] <= 0.2
+
+
+class TestPrerequisites:
+    def test_reports_missing_names_without_values(self, tmp_path):
+        from atlas_amazon.providers.sp_api.preflight import (
+            market_prerequisites,
+            missing_prerequisites,
+            render_prerequisites,
+        )
+
+        env = {"SP_API_LWA_CLIENT_SECRET": "s3cr3t-value", "ATLAS_ALLOW_LIVE_MARKET": "yes"}
+        found = market_prerequisites(env, recordings_dir=tmp_path / "market_v10")
+        assert missing_prerequisites(found) == [
+            "SP_API_LWA_CLIENT_ID",
+            "SP_API_REFRESH_TOKEN",
+            "ATLAS_ALLOW_LIVE_MARKET",
+        ]
+        text = render_prerequisites(found)
+        assert "s3cr3t" not in text
+        assert "ATLAS_ALLOW_LIVE_MARKET: set, but not to 1" in text
+        assert "recordings directory market_v10/: fresh" in text
+
+    def test_format_hints_warn_without_failing(self):
+        from atlas_amazon.providers.sp_api.preflight import market_prerequisites
+
+        env = {
+            "SP_API_LWA_CLIENT_ID": "wrong-id",
+            "SP_API_LWA_CLIENT_SECRET": "x",
+            "SP_API_REFRESH_TOKEN": "Atzr|abc",
+            "ATLAS_ALLOW_LIVE_MARKET": "1",
+        }
+        found = {p.name: p for p in market_prerequisites(env)}
+        assert all(p.ok for p in found.values())
+        assert (
+            found["SP_API_LWA_CLIENT_ID"].detail == "set, but does not look like an LWA client ID"
+        )
+        assert found["SP_API_REFRESH_TOKEN"].detail == "set"
+
+    def test_runner_prereqs_mode_is_offline(self, tmp_path, monkeypatch, capsys):
+        runner = load_runner()
+        monkeypatch.setattr(runner, "LIVE", tmp_path)
+        for name in ("SP_API_LWA_CLIENT_ID", "SP_API_LWA_CLIENT_SECRET", "SP_API_REFRESH_TOKEN"):
+            monkeypatch.setenv(name, "Atzr|amzn1.application-oa2-client.secretvalue")
+        monkeypatch.setenv("ATLAS_ALLOW_LIVE_MARKET", "1")
+        monkeypatch.setattr("sys.argv", ["x", "--prereqs"])
+        assert runner.main() == 0
+        assert "secretvalue" not in capsys.readouterr().out
+
+
+class TestSecretGuard:
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"items": [], "echo": "Atza|" + "x" * 12},
+            {"items": [], "echo": "Atzr|" + "y" * 12},
+            {"items": [], "echo": "amzn1.oa2-cs.v1." + "a1" * 10},
+            {"items": [], "refresh_token": "anything"},
+            {"items": [], "client_secret": "anything"},
+        ],
+    )
+    def test_recordings_refuse_lwa_credentials(self, tmp_path, body):
+        from atlas_amazon.semantic.records import SecretLeakError
+
+        path = tmp_path / "rec.jsonl"
+        transport = fake_transport({}, overrides={"bottle": failure(200, body)})
+        with pytest.raises(SecretLeakError):
+            provider(RecordingHttpTransport(transport, path)).search(["bottle"], marketplace="US")
+        assert not path.exists() or path.read_text(encoding="utf-8") == ""

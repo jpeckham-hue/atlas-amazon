@@ -61,6 +61,7 @@ INCLUDED_DATA = "summaries,attributes,classifications,salesRanks"
 RATE_LIMIT_PER_SECOND = 5.0  # documented searchCatalogItems usage plan (burst 5)
 MAX_PAGE_SIZE = 20
 MAX_IDENTIFIERS = 20
+MAX_KEYWORDS = 20  # words per keyword query (API limit)
 NA = "https://sellingpartnerapi-na.amazon.com"
 EU = "https://sellingpartnerapi-eu.amazon.com"
 # Atlas marketplace code -> (SP-API marketplace ID, regional endpoint).
@@ -74,6 +75,24 @@ MARKETPLACES: Mapping[str, tuple[str, str]] = {
 
 class UnsupportedMarketplace(ValueError):
     pass
+
+
+def _response_time(response: HttpResponse) -> datetime | None:
+    """The original response time, or None when missing, unparseable or naive."""
+    try:
+        when = datetime.fromisoformat(response.retrieved_at)
+    except (TypeError, ValueError):
+        return None
+    return when if when.tzinfo is not None and when.utcoffset() is not None else None
+
+
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _has_next_page(body: Mapping[str, Any]) -> bool:
+    pagination = body.get("pagination")
+    return isinstance(pagination, Mapping) and bool(pagination.get("nextToken"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +166,8 @@ def item_payload(item: Mapping[str, Any], marketplace_id: str) -> dict[str, Any]
     ]
     if not summaries or not isinstance(summaries[0].get("itemName"), str):
         return None  # no data for this marketplace: not our evidence
+    if not summaries[0]["itemName"].strip():
+        return None  # nothing to read as a listing
     summary = summaries[0]
     attributes = item.get("attributes") if isinstance(item.get("attributes"), Mapping) else {}
     classifications = [
@@ -163,7 +184,7 @@ def item_payload(item: Mapping[str, Any], marketplace_id: str) -> dict[str, Any]
     ]
     payload: dict[str, Any] = {
         "asin": asin,
-        "title": summary["itemName"],
+        "title": summary["itemName"].strip(),
         "bullets": list(_bullets(attributes, marketplace_id)),
         "classifications": classifications,
         "sales_ranks": thaw(sales_ranks),
@@ -201,9 +222,15 @@ class SpApiCatalogProvider:
     def is_live(self) -> bool:
         return self.transport.is_live
 
-    def _queries(self, keywords: Sequence[str]) -> list[str]:
+    def _split_queries(self, keywords: Sequence[str]) -> tuple[list[str], list[str]]:
+        """(queries to send, queries dropped by `query_limit`), normalized and de-duplicated."""
         queries = [q for q in dict.fromkeys(normalize_text(k) for k in keywords) if q]
-        return queries if self.query_limit is None else queries[: self.query_limit]
+        if self.query_limit is None:
+            return queries, []
+        return queries[: self.query_limit], queries[self.query_limit :]
+
+    def _queries(self, keywords: Sequence[str]) -> list[str]:
+        return self._split_queries(keywords)[0]
 
     def plan(
         self, *, marketplace: str, keywords: Sequence[str] = (), asins: Sequence[str] = ()
@@ -232,6 +259,11 @@ class SpApiCatalogProvider:
 
     def calls_made(self, run_id: str | None) -> int:
         return self._calls.get(run_id, 0)
+
+    @property
+    def total_calls(self) -> int:
+        """Live calls made across all runs."""
+        return sum(self._calls.values())
 
     def _request(self, marketplace: str, params: Mapping[str, str]) -> HttpRequest:
         marketplace_id, base = _marketplace(marketplace)
@@ -271,6 +303,9 @@ class SpApiCatalogProvider:
         ):
             self.failures.append((label, "malformed: expected an object with an items list"))
             return None
+        if _response_time(response) is None:
+            self.failures.append((label, "malformed: missing or naive retrieved_at"))
+            return None
         return response
 
     def _items(
@@ -299,7 +334,7 @@ class SpApiCatalogProvider:
                     provider=self.name,
                     kind=EvidenceKind.CATALOG_ITEM,
                     marketplace=marketplace,
-                    retrieved_at=datetime.fromisoformat(response.retrieved_at),
+                    retrieved_at=_response_time(response),
                     payload=payload,
                     subject=payload["asin"],
                     run_id=run_id,
@@ -315,12 +350,14 @@ class SpApiCatalogProvider:
         marketplace_id, _ = _marketplace(marketplace)
         out: list[Evidence] = []
         seen: set[str] = set()
-        queries = self._queries(keywords)
-        for query in [q for q in dict.fromkeys(normalize_text(k) for k in keywords) if q]:
-            if query not in queries:
-                self.failures.append((query, f"skipped: query_limit={self.query_limit}"))
+        queries, dropped = self._split_queries(keywords)
+        for query in dropped:
+            self.failures.append((query, f"skipped: query_limit={self.query_limit}"))
         for query in queries:
-            words = [t for t in tokenize(query)]
+            words = tokenize(query)
+            if len(words) > MAX_KEYWORDS:
+                self.failures.append((query, f"skipped: more than {MAX_KEYWORDS} keywords"))
+                continue
             request = self._request(
                 marketplace, {"keywords": ",".join(words), "pageSize": str(self.page_size)}
             )
@@ -335,7 +372,7 @@ class SpApiCatalogProvider:
                     provider=self.name,
                     kind=EvidenceKind.CATALOG_SEARCH,
                     marketplace=marketplace,
-                    retrieved_at=datetime.fromisoformat(response.retrieved_at),
+                    retrieved_at=_response_time(response),
                     payload={
                         "query": query,
                         "keywords": words,
@@ -343,7 +380,8 @@ class SpApiCatalogProvider:
                         "included_data": INCLUDED_DATA,
                         "page_size": self.page_size,
                         "result_asins": asins,
-                        "number_of_results": response.body.get("numberOfResults"),
+                        "number_of_results": _int_or_none(response.body.get("numberOfResults")),
+                        "more_pages": _has_next_page(response.body),  # never fetched
                         "raw": thaw(response.body),
                     },
                     subject=query,
@@ -367,7 +405,11 @@ class SpApiCatalogProvider:
         for start in range(0, len(ids), MAX_IDENTIFIERS):
             group = ids[start : start + MAX_IDENTIFIERS]
             label = ",".join(group)
-            request = self._request(marketplace, {"identifiers": label, "identifiersType": "ASIN"})
+            # pageSize must cover the group: the API default (10) would drop items silently.
+            request = self._request(
+                marketplace,
+                {"identifiers": label, "identifiersType": "ASIN", "pageSize": str(len(group))},
+            )
             response = self._call(label, request, run_id)
             if response is None:
                 continue
