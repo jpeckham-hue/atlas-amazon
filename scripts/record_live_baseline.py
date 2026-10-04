@@ -24,6 +24,9 @@ also need ATLAS_ALLOW_LIVE_LLM=1.
     python scripts/record_live_baseline.py --plan    # show the plan; no calls
     python scripts/record_live_baseline.py --check   # no-cost gateway auth/model check
     python scripts/record_live_baseline.py --run     # check, plan, then record live
+
+Options: `--dir NAME` records into tests/fixtures/recordings/live/NAME (default
+v07, the v0.7 baseline); `--production-only` skips the strong comparison.
 """
 
 from __future__ import annotations
@@ -57,7 +60,9 @@ from atlas_amazon.semantic.transport import GATEWAY_BASE_URL, GATEWAY_KEY_ENV
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS = ROOT / "tests" / "fixtures" / "scenarios"
-OUT = ROOT / "tests" / "fixtures" / "recordings" / "live" / "v07"
+LIVE = ROOT / "tests" / "fixtures" / "recordings" / "live"
+OUT = LIVE / "v07"  # replaced by --dir
+PRODUCTION_ONLY = False  # replaced by --production-only
 NAMES = ("book_cozy_mystery", "physical_water_bottle")
 MAX_CALLS = 10
 # The comparison covers the judgment types v0.7 changes (entity blocking and
@@ -97,7 +102,12 @@ def plan_all() -> dict[str, tuple[RunSemanticPlan, SemanticCallPlan]]:
     for name in NAMES:
         # A transport that refuses live calls: planning never sends anything.
         run = build_run(name, default_live_transport(allow_live=False), UsageLedger())
-        plans[name] = (run.plan_semantics(), comparison_plan(name))
+        comparison = (
+            SemanticCallPlan(stage="strong_comparison", provider="none", requested=0)
+            if PRODUCTION_ONLY
+            else comparison_plan(name)
+        )
+        plans[name] = (run.plan_semantics(), comparison)
     return plans
 
 
@@ -211,14 +221,16 @@ def record() -> int:
             max_live_calls=MAX_CALLS, max_cost_usd=before + (TOTAL_CAP_USD - spent)
         )
         compare_path = OUT / f"{name}.strong_comparison.jsonl"
-        comparison = run_strong_comparison(
-            RecordingTransport(default_live_transport(), compare_path),
-            result.judgments,
-            marketplace=result.metadata.marketplace,
-            run_id=run_id,
-            ledger=ledger,
-            types=COMPARISON_TYPES,
-        )
+        comparison = None
+        if not PRODUCTION_ONLY:
+            comparison = run_strong_comparison(
+                RecordingTransport(default_live_transport(), compare_path),
+                result.judgments,
+                marketplace=result.metadata.marketplace,
+                run_id=run_id,
+                ledger=ledger,
+                types=COMPARISON_TYPES,
+            )
         spent += spent_by(ledger, run_id) - before
 
         path = OUT / f"{name}.jsonl"
@@ -233,7 +245,7 @@ def record() -> int:
         summary[name] = {
             "live_calls_total": summary_all.live_calls,
             "production_calls": usage.live_calls,
-            "comparison_items": len(comparison.strong),
+            "comparison_items": len(comparison.strong) if comparison else 0,
             "recorded_exchanges": len(records),
             "fast_calls": summary_all.fast_calls,
             "strong_calls": summary_all.strong_calls,
@@ -267,7 +279,12 @@ def main() -> int:
     mode.add_argument("--plan", action="store_true")
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--run", action="store_true")
+    parser.add_argument("--dir", default="v07", help="recordings subdirectory under live/")
+    parser.add_argument("--production-only", action="store_true")
     args = parser.parse_args()
+    global OUT, PRODUCTION_ONLY
+    OUT = LIVE / args.dir
+    PRODUCTION_ONLY = args.production_only
     if args.check:
         problem, info = preflight()
         print(json.dumps(info, indent=2))

@@ -25,7 +25,12 @@ into its parts.
 > loadable so earlier recordings still replay. Against the human-reviewed
 > reference, intent-risk escalation raises book intent agreement from 3/4 to
 > 4/4 with no other change; see
-> [docs/baselines/intent_v0.9.md](docs/baselines/intent_v0.9.md).
+> [docs/baselines/intent_v0.9.md](docs/baselines/intent_v0.9.md). A live
+> confirmation ($0.0760 measured; see
+> [docs/baselines/live_v0.9.md](docs/baselines/live_v0.9.md)) fixed both target
+> intents ("bottle water" transactional, "small town mystery" browsing) and kept
+> product relevance at 12/12, but over-corrected book intent toward browsing
+> ("cozy mystery books") and dropped one book relevance (10/11).
 >
 > In v0.8 (offline, no live spend): relevance-risk signals (setting,
 > broad-category, generic and description-only terms) send over-rated

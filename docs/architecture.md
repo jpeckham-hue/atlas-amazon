@@ -1219,6 +1219,45 @@ recommendations. "bottle water" is flagged, but both recorded tiers answered
 informational under the v2 prompt, so only the v3 prompt can fix it; that
 needs new answers.
 
+### Live confirmation (v0.9 prompt and routing)
+
+One capped production-only run per scenario through Vercel AI Gateway
+(`record_live_baseline.py --run --dir v09 --production-only`), recorded in
+`tests/fixtures/recordings/live/v09/` and replayed offline by
+`tests/test_live_v09.py` (report: [docs/baselines/live_v0.9.md](baselines/live_v0.9.md)).
+
+| Measured | book | product | total |
+|---|---|---|---|
+| API calls (fast / strong) | 5 (2 / 3) | 5 (3 / 2) | 10 |
+| Escalations | 4 (equivalence_conflict, broad_category, setting_term, lexical_disagreement) | 3 (intent_structure, lexical_disagreement, incidental_description_support) | 7 |
+| Input / output tokens | 13,064 / 2,930 | 13,360 / 3,284 | 26,424 / 6,214 |
+| Cost | $0.0389 | $0.0371 | **$0.0760** |
+
+Agreement with the human-reviewed reference (v0.8 simulated -> v0.9 live):
+book relevance 11/11 -> **10/11**, intent 3/4 -> 3/4, entity 3/3, equivalence
+1/1; product relevance 12/12 -> 12/12, intent 4/5 -> **5/5**, entity 6/6,
+equivalence 2/2.
+
+* Fixed: "bottle water" is transactional 0.8 (the fast tier answered
+  transactional; the older head-term rule escalated it needlessly and the
+  strong tier confirmed). "small town mystery" is commercial_investigation
+  0.7 straight from the fast tier.
+* New disagreement: "cozy mystery books" is now browsing (0.7) against the
+  reviewer's transactional 0.85. The genre guidance over-corrected: all 13
+  book intent labels are commercial_investigation, including "... books"
+  queries whose format word signals shopping.
+* New disagreement: "cozy mystery kindle unlimited" relevance 0.3 vs the
+  (unreviewed) fixture 0.6; the model will not assume Kindle Unlimited
+  enrollment the context does not state. The keyword is entity-blocked, so
+  no recommendation or backend change follows.
+* Downstream: families, entity blocking and audit-valid proposals unchanged;
+  review themes equivalent, both product opportunities supported. Book
+  recommendations regain "small town" (relevance 0.5, within tolerance of the
+  reviewer's 0.3 but below the 0.7 relevance-risk threshold; it rose from 11th
+  to 9th when the Kindle Unlimited keyword fell). Product recommendations swap
+  "straw lid" for "bpa free" (0.45): neither is a supplied feature;
+  recommendations do not yet require first-party support.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -1260,11 +1299,13 @@ needs new answers.
 10. **v0.9 (this release)**: intent separated from relevance in the prompt,
     intent-risk escalation, loadable historical prompt versions, and an
     offline routing comparison against the human-reviewed reference.
-11. **v1.0 (recommended)**: one capped live confirmation of the v3 prompt
-    (7 planned calls, ~$0.058 expected, $0.19 worst case) to check that the
-    prompt change fixes "bottle water" and does not regress relevance; then
-    the first read-only live market-data adapter (autocomplete or SP-API
-    Catalog) with the same plan / cap / record / replay discipline.
+11. **Next (recommended)**: close semantic calibration with two small fixes,
+    measured offline on the v0.9 recordings: escalate "<genre> books" intent
+    away from browsing only with a second opinion (format-word queries), and
+    require first-party support (or an explicit "only if accurate" caveat) for
+    recommended feature keywords such as "bpa free". Then the first read-only
+    live market-data adapter (autocomplete or SP-API Catalog) with the same
+    plan / cap / record / replay discipline.
 12. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
