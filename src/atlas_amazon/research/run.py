@@ -46,6 +46,7 @@ from atlas_amazon import __version__
 from atlas_amazon.audit.listing import audit_listing
 from atlas_amazon.evidence.store import EvidenceStore
 from atlas_amazon.jsonvalue import canonical_json
+from atlas_amazon.judgments.context import product_context
 from atlas_amazon.judgments.contract import (
     BLOCKING_ENTITY_LABELS,
     Judgment,
@@ -135,6 +136,9 @@ class ResearchConfig:
     deterministic_judgments: bool = True
     # Ask relevance/intent only for families that can be ranked (all evidence signals present).
     skip_unrankable_judgments: bool = True
+    # Give keyword judgments the seller's first-party product context (v0.7);
+    # False reproduces the v0.6 {product_title, seeds} context.
+    product_context: bool = True
 
     def __post_init__(self) -> None:
         if self.top_n < 1 or self.min_competitor_support < 1 or self.min_theme_count < 1:
@@ -249,6 +253,12 @@ class ResearchRun:
             )
         if not run_id:
             raise ValueError("run_id must be non-empty")
+        for role in ("judgments", "review_themes", "human_judgments"):
+            if getattr(getattr(providers, role), "evaluation_only", False):
+                raise ValueError(
+                    f"{role} provider is evaluation-only (strong-tier comparison); "
+                    "it cannot produce a research run"
+                )
         if started_at.utcoffset() is None:
             raise ValueError("started_at must be timezone-aware")
         self.product = product
@@ -440,6 +450,11 @@ class ResearchRun:
                 reference_terms=reference_terms_for(self.product.title, seeds),
             )
             rankable = {d.family.id for d in pre if d.scorable}
+        context = (
+            product_context(self.product, self.listing, self.recipe, seeds)
+            if self.config.product_context
+            else {"product_title": self.product.title, "seeds": list(seeds)}
+        )
         requests, skipped = [], 0
         for family in families:
             for kind in KEYWORD_JUDGMENTS:
@@ -451,9 +466,7 @@ class ResearchRun:
                     skipped += 1
                     continue
                 requests.append(
-                    JudgmentRequest.about_keyword(
-                        kind, family.canonical, product_title=self.product.title, seeds=seeds
-                    )
+                    JudgmentRequest.about_keyword(kind, family.canonical, context=context)
                 )
         return requests, skipped
 
@@ -489,26 +502,13 @@ class ResearchRun:
             stopwords=backend.stopwords if backend else (),
         )
 
-    def plan_semantics(self) -> RunSemanticPlan:
-        """Every semantic call this run would make, with costs, before any live call.
-
-        Collects the (non-semantic) research evidence exactly as `execute()`
-        does, then plans review themes, equivalence and keyword judgments
-        without calling a model. The keyword stage is planned on families
-        before equivalence judgments: confirmed merges can only remove
-        requests, so it is an upper bound.
-        """
+    def _collect_for_planning(self):
         ctx, seeds, _ = self._context(plan_only=True)
         for priority in self.recipe.research_priorities:
             run_priority(ctx, priority)
-        stages: list[SemanticCallPlan] = []
-        notes: list[str] = []
-        themer = self.providers.review_themes
-        reviews = ctx.stored(EvidenceKind.REVIEW_SAMPLE)
-        if themer is not None and reviews and hasattr(themer, "plan"):
-            stages.append(themer.plan(reviews, marketplace=ctx.marketplace, run_id=self.run_id))
-        if self.providers.judgments is None and self.providers.human_judgments is None:
-            return RunSemanticPlan(self.run_id, tuple(stages), ("no judgment provider",))
+        return ctx, seeds
+
+    def _stage_requests(self, ctx: RunContext, seeds: Sequence[str]):
         metrics = ctx.stored(EvidenceKind.KEYWORD_METRIC)
         catalog = ctx.stored(EvidenceKind.CATALOG_ITEM)
         grouping = group_keyword_families(
@@ -520,12 +520,44 @@ class ResearchRun:
         keyword_requests, skipped = self._keyword_requests(
             grouping.families, metrics=metrics, catalog=catalog, seeds=seeds
         )
-        equivalence_requests = [JudgmentRequest.equivalence(p.a, p.b) for p in grouping.unconfirmed]
-        model = self.providers.judgments
-        for name, requests, skip in (
-            ("equivalence_judgments", equivalence_requests, 0),
+        equivalence = [JudgmentRequest.equivalence(p.a, p.b) for p in grouping.unconfirmed]
+        return grouping, (
+            ("equivalence_judgments", equivalence, 0),
             ("keyword_judgments", keyword_requests, skipped),
-        ):
+        )
+
+    def model_requests(self) -> dict[str, list[JudgmentRequest]]:
+        """Per stage, the judgment requests that would reach the model provider.
+
+        Human and deterministic answers are already removed. The keyword stage
+        uses families before equivalence judgments (an upper bound). Collects
+        research evidence like `execute()`; makes no semantic calls.
+        """
+        ctx, seeds = self._collect_for_planning()
+        _, stages = self._stage_requests(ctx, seeds)
+        return {name: self._route(ctx, requests)[2] for name, requests, _ in stages}
+
+    def plan_semantics(self) -> RunSemanticPlan:
+        """Every semantic call this run would make, with costs, before any live call.
+
+        Collects the (non-semantic) research evidence exactly as `execute()`
+        does, then plans review themes, equivalence and keyword judgments
+        without calling a model. The keyword stage is planned on families
+        before equivalence judgments: confirmed merges can only remove
+        requests, so it is an upper bound.
+        """
+        ctx, seeds = self._collect_for_planning()
+        stages: list[SemanticCallPlan] = []
+        notes: list[str] = []
+        themer = self.providers.review_themes
+        reviews = ctx.stored(EvidenceKind.REVIEW_SAMPLE)
+        if themer is not None and reviews and hasattr(themer, "plan"):
+            stages.append(themer.plan(reviews, marketplace=ctx.marketplace, run_id=self.run_id))
+        if self.providers.judgments is None and self.providers.human_judgments is None:
+            return RunSemanticPlan(self.run_id, tuple(stages), ("no judgment provider",))
+        grouping, stage_requests = self._stage_requests(ctx, seeds)
+        model = self.providers.judgments
+        for name, requests, skip in stage_requests:
             if not requests:
                 continue
             _human, rules, left = self._route(ctx, requests)

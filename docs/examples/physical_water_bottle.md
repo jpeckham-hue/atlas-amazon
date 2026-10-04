@@ -1,11 +1,11 @@
 # Research report: Acme Insulated Water Bottle 32 oz
 
-- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.6.0)
+- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.7.0)
 - Recipe: `physical-product` 0.2.0 (amazon-base > physical-product), marketplace US
 - Seeds (seed_keywords attribute): water bottle, insulated water bottle
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=none
 - Keyword families: on
-- Evidence fingerprint: `eb61771b7d64be7b`
+- Evidence fingerprint: `bc859a951d655056`
 
 ## Research tasks
 
@@ -71,10 +71,10 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.950 | 0.950 | 0.35 | 0.332 | `ev_0c2afd89b880c06a57087321` | judgment ev_0c2afd89b880c06a57087321: fixture-judge-1 / relevance-fixture-v1, confidence 0.9: Exactly the product type and its key attribute. |
+| relevance | judgment | 0.950 | 0.950 | 0.35 | 0.332 | `ev_d01860d878e19518e9329f75` | judgment ev_d01860d878e19518e9329f75: fixture-judge-1 / relevance-fixture-v1, confidence 0.9: Exactly the product type and its key attribute. |
 | demand | evidence | 0.910 | 0.910 | 0.25 | 0.228 | `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3` | log1p(120000 + 20000 = 140000) / log1p(450000) from ['ev_15dcaed51f61e9a6b1d41b04', 'ev_55405880b83009c2c09d4cf3'] |
 | competition | evidence | 0.793 | 0.207 | 0.15 | 0.031 | `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3` | volume-weighted mean 0.793 from ['ev_15dcaed51f61e9a6b1d41b04', 'ev_55405880b83009c2c09d4cf3'], scored as 1 - value |
-| intent | judgment | 0.900 | 0.900 | 0.15 | 0.135 | `ev_0a2dcbfe42b0c874b031ad2f` | judgment ev_0a2dcbfe42b0c874b031ad2f: fixture-judge-1 / intent-fixture-v1, confidence 0.85: Ready-to-buy product query. |
+| intent | judgment | 0.900 | 0.900 | 0.15 | 0.135 | `ev_f1a00cf037f3058b7880b999` | judgment ev_f1a00cf037f3058b7880b999: fixture-judge-1 / intent-fixture-v1, confidence 0.85: Ready-to-buy product query. |
 | competitor_coverage | evidence | 0.667 | 0.667 | 0.10 | 0.067 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 2/3 competitor listings contain any of 2 member phrases |
 
 ### 2. water bottle: 0.745
@@ -83,17 +83,17 @@ Intent label (judgment): commercial_investigation
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.850 | 0.850 | 0.35 | 0.297 | `ev_e77e7a04ad0f103ae7c52c29` | judgment ev_e77e7a04ad0f103ae7c52c29: fixture-judge-1 / relevance-fixture-v1, confidence 0.9: The product type, unqualified. |
+| relevance | judgment | 0.850 | 0.850 | 0.35 | 0.297 | `ev_fc14e012b33a6b335ac1d46e` | judgment ev_fc14e012b33a6b335ac1d46e: fixture-judge-1 / relevance-fixture-v1, confidence 0.9: The product type, unqualified. |
 | demand | evidence | 1.000 | 1.000 | 0.25 | 0.250 | `ev_99b58c87b8aa6bfb925f1ea3` | log1p(450000) / log1p(450000) from ['ev_99b58c87b8aa6bfb925f1ea3'] |
 | competition | evidence | 0.950 | 0.050 | 0.15 | 0.008 | `ev_99b58c87b8aa6bfb925f1ea3` | competition 0.950 from ['ev_99b58c87b8aa6bfb925f1ea3'], scored as 1 - value |
-| intent | judgment | 0.600 | 0.600 | 0.15 | 0.090 | `ev_78f884733936d9df04876941` | judgment ev_78f884733936d9df04876941: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Broad browsing query. |
+| intent | judgment | 0.600 | 0.600 | 0.15 | 0.090 | `ev_9ddbd0e3d144ff971d1f960d` | judgment ev_9ddbd0e3d144ff971d1f960d: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Broad browsing query. |
 | competitor_coverage | evidence | 1.000 | 1.000 | 0.10 | 0.100 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 3/3 competitor listings contain the phrase |
 
 ### 3. double wall vacuum: 0.733
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.800 | 0.800 | 0.35 | 0.280 | `ev_f291231d693233da14a2ca59` | judgment ev_f291231d693233da14a2ca59: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Describes the product's insulation. |
+| relevance | judgment | 0.800 | 0.800 | 0.35 | 0.280 | `ev_2bae444586fa6e1739616805` | judgment ev_2bae444586fa6e1739616805: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Describes the product's insulation. |
 | demand | evidence | 0.615 | 0.615 | 0.25 | 0.154 | `ev_9d5250bbe438bc5c61e9a908` | log1p(3000) / log1p(450000) from ['ev_9d5250bbe438bc5c61e9a908'] |
 | competition | evidence | 0.200 | 0.800 | 0.15 | 0.120 | `ev_9d5250bbe438bc5c61e9a908` | competition 0.200 from ['ev_9d5250bbe438bc5c61e9a908'], scored as 1 - value |
 | intent | heuristic | 0.750 | 0.750 | 0.15 | 0.112 | none | heuristic: specificity proxy min(1, 3 words / 4) |
@@ -105,10 +105,10 @@ Intent label (judgment): commercial_investigation
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.750 | 0.750 | 0.35 | 0.262 | `ev_e3889e58ef4921f8da45eb75` | judgment ev_e3889e58ef4921f8da45eb75: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The listing claims a leak proof lid. |
+| relevance | judgment | 0.750 | 0.750 | 0.35 | 0.262 | `ev_6fa6b5ce2c5e3b74a9f6d7fd` | judgment ev_6fa6b5ce2c5e3b74a9f6d7fd: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The listing claims a leak proof lid. |
 | demand | evidence | 0.690 | 0.690 | 0.25 | 0.173 | `ev_fad466f336253d1d8ca2237d` | log1p(8000) / log1p(450000) from ['ev_fad466f336253d1d8ca2237d'] |
 | competition | evidence | 0.300 | 0.700 | 0.15 | 0.105 | `ev_fad466f336253d1d8ca2237d` | competition 0.300 from ['ev_fad466f336253d1d8ca2237d'], scored as 1 - value |
-| intent | judgment | 0.500 | 0.500 | 0.15 | 0.075 | `ev_644c96a4770cf93cf7e36c9f` | judgment ev_644c96a4770cf93cf7e36c9f: fixture-judge-1 / intent-fixture-v1, confidence 0.7: Attribute research. |
+| intent | judgment | 0.500 | 0.500 | 0.15 | 0.075 | `ev_ba90f605e9a49c9679c191ee` | judgment ev_ba90f605e9a49c9679c191ee: fixture-judge-1 / intent-fixture-v1, confidence 0.7: Attribute research. |
 | competitor_coverage | evidence | 1.000 | 1.000 | 0.10 | 0.100 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 3/3 competitor listings contain the phrase |
 
 ### 5. water bottle 32 oz: 0.680
@@ -117,10 +117,10 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.800 | 0.800 | 0.35 | 0.280 | `ev_41dcd600ab3fda70c3d67fa8` | judgment ev_41dcd600ab3fda70c3d67fa8: fixture-judge-1 / relevance-fixture-v1, confidence 0.85: Matches the product's 32 oz size. |
+| relevance | judgment | 0.800 | 0.800 | 0.35 | 0.280 | `ev_a88c5d01b5b0f80700fec199` | judgment ev_a88c5d01b5b0f80700fec199: fixture-judge-1 / relevance-fixture-v1, confidence 0.85: Matches the product's 32 oz size. |
 | demand | evidence | 0.792 | 0.792 | 0.25 | 0.198 | `ev_475b71e0132c37882527e681` | log1p(30000) / log1p(450000) from ['ev_475b71e0132c37882527e681'] |
 | competition | evidence | 0.500 | 0.500 | 0.15 | 0.075 | `ev_475b71e0132c37882527e681` | competition 0.500 from ['ev_475b71e0132c37882527e681'], scored as 1 - value |
-| intent | judgment | 0.850 | 0.850 | 0.15 | 0.128 | `ev_ac00aaf13124604193b43ef1` | judgment ev_ac00aaf13124604193b43ef1: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Size-specific purchase query. |
+| intent | judgment | 0.850 | 0.850 | 0.15 | 0.128 | `ev_28b50e1acd7241d098a6eee7` | judgment ev_28b50e1acd7241d098a6eee7: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Size-specific purchase query. |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 0/3 competitor listings contain the phrase |
 
 ### 6. insulated water bottle stainless steel: 0.630
@@ -137,7 +137,7 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.400 | 0.400 | 0.35 | 0.140 | `ev_e2b063b59e8600b660448457` | judgment ev_e2b063b59e8600b660448457: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The product has a lid, not a straw. |
+| relevance | judgment | 0.400 | 0.400 | 0.35 | 0.140 | `ev_7ba405f60934da7c9f86d509` | judgment ev_7ba405f60934da7c9f86d509: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The product has a lid, not a straw. |
 | demand | evidence | 0.778 | 0.778 | 0.25 | 0.194 | `ev_8ea1aeea6e6605cb8cfd5c17` | log1p(25000) / log1p(450000) from ['ev_8ea1aeea6e6605cb8cfd5c17'] |
 | competition | evidence | 0.450 | 0.550 | 0.15 | 0.083 | `ev_8ea1aeea6e6605cb8cfd5c17` | competition 0.450 from ['ev_8ea1aeea6e6605cb8cfd5c17'], scored as 1 - value |
 | intent | heuristic | 1.000 | 1.000 | 0.15 | 0.150 | none | heuristic: specificity proxy min(1, 5 words / 4) |
@@ -147,7 +147,7 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.550 | 0.550 | 0.35 | 0.193 | `ev_4310b76fb50144be57cd8d12` | judgment ev_4310b76fb50144be57cd8d12: fixture-judge-1 / relevance-fixture-v1, confidence 0.7: Material match, but very generic. |
+| relevance | judgment | 0.550 | 0.550 | 0.35 | 0.193 | `ev_83ccd9d6cf9192e77062857f` | judgment ev_83ccd9d6cf9192e77062857f: fixture-judge-1 / relevance-fixture-v1, confidence 0.7: Material match, but very generic. |
 | demand | evidence | 0.938 | 0.938 | 0.25 | 0.234 | `ev_dd4002c0e8a657153adc2858` | log1p(200000) / log1p(450000) from ['ev_dd4002c0e8a657153adc2858'] |
 | competition | evidence | 0.900 | 0.100 | 0.15 | 0.015 | `ev_dd4002c0e8a657153adc2858` | competition 0.900 from ['ev_dd4002c0e8a657153adc2858'], scored as 1 - value |
 | intent | heuristic | 0.500 | 0.500 | 0.15 | 0.075 | none | heuristic: specificity proxy min(1, 2 words / 4) |
@@ -159,7 +159,7 @@ Family phrases: `water bottles for kids`, `kids water bottle`
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.350 | 0.350 | 0.35 | 0.122 | `ev_110787c13af16644c85c2966` | judgment ev_110787c13af16644c85c2966: fixture-judge-1 / relevance-fixture-v1, confidence 0.7: Not positioned as a kids' bottle. |
+| relevance | judgment | 0.350 | 0.350 | 0.35 | 0.122 | `ev_a87a53cbd36a0225424b34a2` | judgment ev_a87a53cbd36a0225424b34a2: fixture-judge-1 / relevance-fixture-v1, confidence 0.7: Not positioned as a kids' bottle. |
 | demand | evidence | 0.881 | 0.881 | 0.25 | 0.220 | `ev_a46145f25f3cf0cd1befe0fb`, `ev_5cd7fadd0c663aa3e7aad93b` | log1p(60000 + 35000 = 95000) / log1p(450000) from ['ev_a46145f25f3cf0cd1befe0fb', 'ev_5cd7fadd0c663aa3e7aad93b'] |
 | competition | evidence | 0.632 | 0.368 | 0.15 | 0.055 | `ev_a46145f25f3cf0cd1befe0fb`, `ev_5cd7fadd0c663aa3e7aad93b` | volume-weighted mean 0.632 from ['ev_a46145f25f3cf0cd1befe0fb', 'ev_5cd7fadd0c663aa3e7aad93b'], scored as 1 - value |
 | intent | heuristic | 1.000 | 1.000 | 0.15 | 0.150 | none | heuristic: specificity proxy min(1, 4 words / 4) |
@@ -169,7 +169,7 @@ Family phrases: `water bottles for kids`, `kids water bottle`
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.300 | 0.300 | 0.35 | 0.105 | `ev_cf77824c02141c3d40b75244` | judgment ev_cf77824c02141c3d40b75244: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Straw bottles are a different variant. |
+| relevance | judgment | 0.300 | 0.300 | 0.35 | 0.105 | `ev_b47d5de4af3bab4ee37f1482` | judgment ev_b47d5de4af3bab4ee37f1482: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Straw bottles are a different variant. |
 | demand | evidence | 0.876 | 0.876 | 0.25 | 0.219 | `ev_8cd644a1a6f2b00053780bc1` | log1p(90000) / log1p(450000) from ['ev_8cd644a1a6f2b00053780bc1'] |
 | competition | evidence | 0.700 | 0.300 | 0.15 | 0.045 | `ev_8cd644a1a6f2b00053780bc1` | competition 0.700 from ['ev_8cd644a1a6f2b00053780bc1'], scored as 1 - value |
 | intent | heuristic | 1.000 | 1.000 | 0.15 | 0.150 | none | heuristic: specificity proxy min(1, 4 words / 4) |
@@ -179,7 +179,7 @@ Family phrases: `water bottles for kids`, `kids water bottle`
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.200 | 0.200 | 0.35 | 0.070 | `ev_0df963b1d3731b3fd1226745` | judgment ev_0df963b1d3731b3fd1226745: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The product has no straw lid. |
+| relevance | judgment | 0.200 | 0.200 | 0.35 | 0.070 | `ev_358fa70c42bb11e9174b437b` | judgment ev_358fa70c42bb11e9174b437b: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: The product has no straw lid. |
 | demand | evidence | 0.739 | 0.739 | 0.25 | 0.185 | `ev_bbc9eb0091469ac753904ecd` | log1p(15000) / log1p(450000) from ['ev_bbc9eb0091469ac753904ecd'] |
 | competition | evidence | 0.350 | 0.650 | 0.15 | 0.098 | `ev_bbc9eb0091469ac753904ecd` | competition 0.350 from ['ev_bbc9eb0091469ac753904ecd'], scored as 1 - value |
 | intent | heuristic | 0.500 | 0.500 | 0.15 | 0.075 | none | heuristic: specificity proxy min(1, 2 words / 4) |
@@ -189,7 +189,7 @@ Family phrases: `water bottles for kids`, `kids water bottle`
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.300 | 0.300 | 0.35 | 0.105 | `ev_0ea16d27fc304cdd54157d24` | judgment ev_0ea16d27fc304cdd54157d24: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: A competitor's brand query. |
+| relevance | judgment | 0.300 | 0.300 | 0.35 | 0.105 | `ev_a98647dd06ab37267af02892` | judgment ev_a98647dd06ab37267af02892: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: A competitor's brand query. |
 | demand | evidence | 0.690 | 0.690 | 0.25 | 0.173 | `ev_56f3efff8b83587b4237e9d0` | log1p(8000) / log1p(450000) from ['ev_56f3efff8b83587b4237e9d0'] |
 | competition | evidence | 0.400 | 0.600 | 0.15 | 0.090 | `ev_56f3efff8b83587b4237e9d0` | competition 0.400 from ['ev_56f3efff8b83587b4237e9d0'], scored as 1 - value |
 | intent | heuristic | 0.750 | 0.750 | 0.15 | 0.112 | none | heuristic: specificity proxy min(1, 3 words / 4) |
@@ -231,10 +231,10 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.050 | 0.050 | 0.35 | 0.017 | `ev_52ad8f96b1e891031f1c4515` | judgment ev_52ad8f96b1e891031f1c4515: fixture-judge-1 / relevance-fixture-v1, confidence 0.95: Bottled drinking water, not a container. |
+| relevance | judgment | 0.050 | 0.050 | 0.35 | 0.017 | `ev_d5388e55a28064b141e98066` | judgment ev_d5388e55a28064b141e98066: fixture-judge-1 / relevance-fixture-v1, confidence 0.95: Bottled drinking water, not a container. |
 | demand | evidence | 0.857 | 0.857 | 0.25 | 0.214 | `ev_b0f86f3f003846b0a5944e1b` | log1p(70000) / log1p(450000) from ['ev_b0f86f3f003846b0a5944e1b'] |
 | competition | evidence | 0.900 | 0.100 | 0.15 | 0.015 | `ev_b0f86f3f003846b0a5944e1b` | competition 0.900 from ['ev_b0f86f3f003846b0a5944e1b'], scored as 1 - value |
-| intent | judgment | 0.800 | 0.800 | 0.15 | 0.120 | `ev_c2ecc1cc9f7711ce890f9fbb` | judgment ev_c2ecc1cc9f7711ce890f9fbb: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Buying bottled water. |
+| intent | judgment | 0.800 | 0.800 | 0.15 | 0.120 | `ev_9f45a0b2e9b71d265051b66b` | judgment ev_9f45a0b2e9b71d265051b66b: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Buying bottled water. |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 0/3 competitor listings contain the phrase |
 
 ## Unscored keywords (missing evidence)
@@ -246,7 +246,7 @@ Intent label (judgment): transactional
 ## Semantic judgments
 
 25 valid judgments: entity 6, equivalence 2, intent 5, relevance 12. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); rules:own_title_words (deterministic-v1).
-- Entity flag: `hydra water bottle` is a brand reference (Hydra); kept out of the backend and of listing recommendations. Judgment `ev_d0bda6f2e466ab73a4c2cb02`
+- Entity flag: `hydra water bottle` is a brand reference (Hydra); kept out of the backend and of listing recommendations. Judgment `ev_9eb7b02531a36174e9939927`
 
 ## Review themes
 
@@ -269,17 +269,17 @@ Other themes (not repeated, or mixed/neutral): heavy (negative, 1)
 
 ## Recommendations
 
-- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_32a617571520a23528ff65fb`. Evidence: `ev_0c2afd89b880c06a57087321`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_0a2dcbfe42b0c874b031ad2f` (+3 more)
-- **keyword_gap** `double wall vacuum`: Ranked #3 (score 0.733) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_32a617571520a23528ff65fb`. Evidence: `ev_f291231d693233da14a2ca59`, `ev_9d5250bbe438bc5c61e9a908`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
-- **placement_upgrade** `leak proof`: Ranked #4 (score 0.715) but found only in bullets (placement 0.60). Consider: title, item_highlights. Evidence: `ev_e3889e58ef4921f8da45eb75`, `ev_fad466f336253d1d8ca2237d`, `ev_644c96a4770cf93cf7e36c9f`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_345b1ec9a8c73e448a49df54`. Evidence: `ev_d01860d878e19518e9329f75`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f1a00cf037f3058b7880b999` (+3 more)
+- **keyword_gap** `double wall vacuum`: Ranked #3 (score 0.733) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_345b1ec9a8c73e448a49df54`. Evidence: `ev_2bae444586fa6e1739616805`, `ev_9d5250bbe438bc5c61e9a908`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
+- **placement_upgrade** `leak proof`: Ranked #4 (score 0.715) but found only in bullets (placement 0.60). Consider: title, item_highlights. Evidence: `ev_6fa6b5ce2c5e3b74a9f6d7fd`, `ev_fad466f336253d1d8ca2237d`, `ev_ba90f605e9a49c9679c191ee`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
 - **keyword_gap** `insulated water bottle stainless steel`: Ranked #6 (score 0.630) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_392a3ce9a9c419a6ab594166`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5`, `ev_eb2efabff59698fdccb240fd`
-- **keyword_gap** `insulated water bottle with straw`: Ranked #7 (score 0.600) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_32a617571520a23528ff65fb`. Evidence: `ev_e2b063b59e8600b660448457`, `ev_8ea1aeea6e6605cb8cfd5c17`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
-- **keyword_gap** `water bottles for kids`: Ranked #9 (score 0.581) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: kids water bottle. Packed by proposal `prop_32a617571520a23528ff65fb`. Evidence: `ev_110787c13af16644c85c2966`, `ev_a46145f25f3cf0cd1befe0fb`, `ev_5cd7fadd0c663aa3e7aad93b`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `water bottle with straw`: Ranked #10 (score 0.552) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_cf77824c02141c3d40b75244`, `ev_8cd644a1a6f2b00053780bc1`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
+- **keyword_gap** `insulated water bottle with straw`: Ranked #7 (score 0.600) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_345b1ec9a8c73e448a49df54`. Evidence: `ev_7ba405f60934da7c9f86d509`, `ev_8ea1aeea6e6605cb8cfd5c17`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
+- **keyword_gap** `water bottles for kids`: Ranked #9 (score 0.581) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: kids water bottle. Packed by proposal `prop_345b1ec9a8c73e448a49df54`. Evidence: `ev_a87a53cbd36a0225424b34a2`, `ev_a46145f25f3cf0cd1befe0fb`, `ev_5cd7fadd0c663aa3e7aad93b`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `water bottle with straw`: Ranked #10 (score 0.552) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_b47d5de4af3bab4ee37f1482`, `ev_8cd644a1a6f2b00053780bc1`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more)
 
 ## Proposals
 
-### `prop_32a617571520a23528ff65fb`: search_terms (evidence)
+### `prop_345b1ec9a8c73e448a49df54`: search_terms (evidence)
 
 Packs 6 of 16 ranked keywords, best first, into search_terms (76/249 bytes). Excluded: 7 duplicate, 1 entity_flag, 25 in_visible_listing, 3 stopword. Skips 2 redundant family member(s) sharing their canonical's words: water bottle insulated, kids water bottle. Retains current unscored content: flask, gym, hiking.
 
@@ -287,4 +287,4 @@ Proposed value: `insulated double wall vacuum straw kids insulation bpa free fla
 
 Validation: **VALID**
 
-Evidence: `ev_0c2afd89b880c06a57087321`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_0a2dcbfe42b0c874b031ad2f`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5`, `ev_eb2efabff59698fdccb240fd`, `ev_f291231d693233da14a2ca59` (+8 more)
+Evidence: `ev_d01860d878e19518e9329f75`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f1a00cf037f3058b7880b999`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5`, `ev_eb2efabff59698fdccb240fd`, `ev_2bae444586fa6e1739616805` (+8 more)

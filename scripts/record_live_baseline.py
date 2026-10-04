@@ -1,15 +1,19 @@
-"""Record the v0.6 live semantic baseline. Spends real money; opt-in only.
+"""Record the live semantic baseline (v0.7). Spends real money; opt-in only.
 
-Runs the v0.5 pipeline (BatchedJudgmentProvider + LLMReviewThemeProvider, the
-default fast/strong tiers) once per example scenario against the live API,
-recording every exchange to tests/fixtures/recordings/live/<scenario>.jsonl
-so it can be replayed offline forever after.
+Per example scenario, once:
+1. the production pipeline (BatchedJudgmentProvider + LLMReviewThemeProvider,
+   default fast/strong tiers, risk-signal escalation), recorded to
+   tests/fixtures/recordings/live/v07/<scenario>.jsonl;
+2. a strong-tier comparison of the same relevance and intent judgments (evaluation mode,
+   never fed into the run), recorded to <scenario>.strong_comparison.jsonl.
+
+The v0.6 recordings in tests/fixtures/recordings/live/ are never touched.
 
 Hard limits, enforced before every call by the usage ledger:
-* at most MAX_CALLS live API calls per scenario;
-* at most TOTAL_CAP_USD across both scenarios: the second scenario's cost
-  limit is whatever the first one left (worst case of the next call
-  included, so the cap is never crossed).
+* at most MAX_CALLS live API calls per scenario (production + comparison);
+* at most TOTAL_CAP_USD across everything: both production runs go first
+  (their combined worst case must fit), then the comparisons; every call's
+  worst case is checked against what is left, so the cap is never crossed.
 
 Live calls go through Vercel AI Gateway (the default live transport). The
 credential is AI_GATEWAY_API_KEY (or VERCEL_OIDC_TOKEN) from the
@@ -33,6 +37,7 @@ import urllib.request
 from pathlib import Path
 
 from atlas_amazon.evidence import InMemoryEvidenceStore
+from atlas_amazon.judgments import JudgmentType
 from atlas_amazon.research import ResearchRun, load_scenario
 from atlas_amazon.semantic import (
     BatchedJudgmentProvider,
@@ -40,19 +45,24 @@ from atlas_amazon.semantic import (
     RecordingTransport,
     RunSemanticPlan,
     SemanticBudget,
+    SemanticCallPlan,
     UsageLedger,
     default_live_transport,
     render_plan_markdown,
 )
+from atlas_amazon.semantic.comparison import run_strong_comparison
 from atlas_amazon.semantic.records import ChecksummedJsonl
 from atlas_amazon.semantic.tiers import ModelTiers
 from atlas_amazon.semantic.transport import GATEWAY_BASE_URL, GATEWAY_KEY_ENV
 
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS = ROOT / "tests" / "fixtures" / "scenarios"
-OUT = ROOT / "tests" / "fixtures" / "recordings" / "live"
+OUT = ROOT / "tests" / "fixtures" / "recordings" / "live" / "v07"
 NAMES = ("book_cozy_mystery", "physical_water_bottle")
 MAX_CALLS = 10
+# The comparison covers the judgment types v0.7 changes (entity blocking and
+# equivalence already agreed 100% in v0.6), keeping the worst case under the cap.
+COMPARISON_TYPES = (JudgmentType.RELEVANCE, JudgmentType.INTENT)
 TOTAL_CAP_USD = 0.25
 
 
@@ -72,26 +82,51 @@ def build_run(name: str, transport, ledger: UsageLedger) -> ResearchRun:
     )
 
 
-def plan_all() -> dict[str, RunSemanticPlan]:
+def comparison_plan(name: str) -> SemanticCallPlan:
+    """Strong-tier comparison of the keyword judgments the model would answer."""
+    run = build_run(name, default_live_transport(allow_live=False), UsageLedger())
+    requests = [r for r in run.model_requests()["keyword_judgments"] if r.type in COMPARISON_TYPES]
+    evaluator = BatchedJudgmentProvider(
+        default_live_transport(allow_live=False), evaluation="strong_only"
+    )
+    return evaluator.plan(requests)
+
+
+def plan_all() -> dict[str, tuple[RunSemanticPlan, SemanticCallPlan]]:
     plans = {}
     for name in NAMES:
         # A transport that refuses live calls: planning never sends anything.
         run = build_run(name, default_live_transport(allow_live=False), UsageLedger())
-        plans[name] = run.plan_semantics()
+        plans[name] = (run.plan_semantics(), comparison_plan(name))
     return plans
 
 
-def print_plans(plans: dict[str, RunSemanticPlan]) -> None:
-    for name, plan in plans.items():
-        print(f"## {name}\n")
+def print_plans(plans) -> None:
+    rows = []
+    for name, (plan, comparison) in plans.items():
+        print(f"## {name}: production pipeline\n")
         print(render_plan_markdown(plan))
-    expected = sum(p.expected_cost_usd for p in plans.values())
-    worst = sum(p.worst_case_cost_usd for p in plans.values())
+        print(f"## {name}: strong-tier comparison (evaluation only)\n")
+        print(render_plan_markdown([comparison]))
+        rows.append(
+            (
+                name,
+                plan.planned_calls + comparison.planned_calls,
+                plan.worst_case_calls + comparison.worst_case_calls,
+                plan.expected_cost_usd + comparison.expected_cost_usd,
+                plan.worst_case_cost_usd + comparison.worst_case_cost_usd,
+            )
+        )
+    for name, calls, worst_calls, expected, worst in rows:
+        print(
+            f"{name}: planned calls {calls} (worst {worst_calls}), expected ${expected:.4f}, "
+            f"worst case ${worst:.4f}"
+        )
     print(
-        f"TOTAL planned calls {sum(p.planned_calls for p in plans.values())}, "
-        f"worst-case calls {sum(p.worst_case_calls for p in plans.values())}, "
-        f"expected ${expected:.4f}, worst case ${worst:.4f} "
-        f"(caps: {MAX_CALLS} calls per scenario, ${TOTAL_CAP_USD} total)"
+        f"TOTAL planned calls {sum(r[1] for r in rows)}, worst-case calls "
+        f"{sum(r[2] for r in rows)}, expected ${sum(r[3] for r in rows):.4f}, worst case "
+        f"${sum(r[4] for r in rows):.4f} (caps: {MAX_CALLS} calls per scenario, "
+        f"${TOTAL_CAP_USD} total)"
     )
 
 
@@ -137,48 +172,83 @@ def record() -> int:
         print(f"not running: {problem}", file=sys.stderr)
         return 4
     OUT.mkdir(parents=True, exist_ok=True)
-    existing = [n for n in NAMES if (OUT / f"{n}.jsonl").exists()]
+    existing = [
+        p.name
+        for n in NAMES
+        for p in (OUT / f"{n}.jsonl", OUT / f"{n}.strong_comparison.jsonl")
+        if p.exists()
+    ]
     if existing:
         print(f"refusing to overwrite existing live recordings: {existing}", file=sys.stderr)
         return 2
     spent = 0.0
-    summary = {}
+    summary: dict = {}
+    state: dict = {}
+
+    def spent_by(ledger, run_id):
+        cost = ledger.summary(run_id).estimated_cost_usd
+        if ledger.summary(run_id).live_calls and cost is None:
+            raise SystemExit("live cost could not be priced; stopping")
+        return cost or 0.0
+
+    # Phase 1: both production runs (their worst case fits the cap).
     for name in NAMES:
-        remaining = TOTAL_CAP_USD - spent
         ledger = UsageLedger(
-            budget=SemanticBudget(max_live_calls=MAX_CALLS, max_cost_usd=remaining)
+            budget=SemanticBudget(max_live_calls=MAX_CALLS, max_cost_usd=TOTAL_CAP_USD - spent)
         )
         path = OUT / f"{name}.jsonl"
-        transport = RecordingTransport(default_live_transport(), path)
-        run = build_run(name, transport, ledger)
+        run = build_run(name, RecordingTransport(default_live_transport(), path), ledger)
         result = run.execute()
-        usage = result.semantic_usage
-        records = ChecksummedJsonl(path).read() if path.exists() else []
+        spent += spent_by(ledger, result.metadata.run_id)
+        state[name] = (ledger, run, result)
+
+    # Phase 2: strong comparisons, each call authorized against what is left.
+    for name in NAMES:
+        ledger, run, result = state[name]
+        run_id = result.metadata.run_id
+        before = spent_by(ledger, run_id)
+        ledger.budget = SemanticBudget(
+            max_live_calls=MAX_CALLS, max_cost_usd=before + (TOTAL_CAP_USD - spent)
+        )
+        compare_path = OUT / f"{name}.strong_comparison.jsonl"
+        comparison = run_strong_comparison(
+            RecordingTransport(default_live_transport(), compare_path),
+            result.judgments,
+            marketplace=result.metadata.marketplace,
+            run_id=run_id,
+            ledger=ledger,
+            types=COMPARISON_TYPES,
+        )
+        spent += spent_by(ledger, run_id) - before
+
+        path = OUT / f"{name}.jsonl"
+        records = [
+            r for f in (path, compare_path) if f.exists() for r in ChecksummedJsonl(f).read()
+        ]
         if any(r["response"].get("synthetic") for r in records):
             raise SystemExit(f"{name}: a recorded response is marked synthetic; not a live run")
-        cost = usage.estimated_cost_usd
-        errors = [
-            f"{r.purpose}: {r.outcome} {r.detail}"
-            for r in ledger.records
-            if r.outcome not in ("ok", "partial")
-        ]
-        if usage.live_calls and cost is None:
-            raise SystemExit(f"{name}: live cost could not be priced; stopping. Errors: {errors}")
-        spent += cost or 0.0
+        summary_all = ledger.summary(run_id)
+        usage = result.semantic_usage
         judges = run.providers.judgments
         summary[name] = {
-            "live_calls": usage.live_calls,
+            "live_calls_total": summary_all.live_calls,
+            "production_calls": usage.live_calls,
+            "comparison_items": len(comparison.strong),
             "recorded_exchanges": len(records),
-            "fast_calls": usage.fast_calls,
-            "strong_calls": usage.strong_calls,
+            "fast_calls": summary_all.fast_calls,
+            "strong_calls": summary_all.strong_calls,
             "escalations": usage.escalations,
             "cache_hits": usage.cache_hits,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "measured_cost_usd": cost,
+            "input_tokens": summary_all.input_tokens,
+            "output_tokens": summary_all.output_tokens,
+            "measured_cost_usd": summary_all.estimated_cost_usd,
             "served_models": sorted({r["response"]["model"] for r in records}),
-            "halts": list(usage.halts),
-            "errors": errors,
+            "halts": list(summary_all.halts),
+            "errors": [
+                f"{r.purpose}: {r.outcome} {r.detail}"
+                for r in ledger.records
+                if r.outcome not in ("ok", "partial")
+            ],
             "failures": [list(f) for f in judges.failures]
             + [list(f) for f in run.providers.review_themes.failures],
             "escalation_events": [
@@ -207,9 +277,15 @@ def main() -> int:
     print_plans(plans)
     if args.plan:
         return 0
-    worst = sum(p.worst_case_cost_usd for p in plans.values())
-    if worst > TOTAL_CAP_USD:
-        print(f"planned worst case ${worst:.4f} exceeds the ${TOTAL_CAP_USD} cap; not running")
+    # Production must be able to finish even in its worst case; the comparison
+    # only runs while the remaining budget covers each call's worst case.
+    production_worst = sum(p.worst_case_cost_usd for p, _ in plans.values())
+    expected = sum(p.expected_cost_usd + c.expected_cost_usd for p, c in plans.values())
+    if production_worst > TOTAL_CAP_USD or expected > TOTAL_CAP_USD:
+        print(
+            f"production worst case ${production_worst:.4f} or expected total "
+            f"${expected:.4f} exceeds the ${TOTAL_CAP_USD} cap; not running"
+        )
         return 3
     return record()
 

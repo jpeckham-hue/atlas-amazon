@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.6: live semantic baseline.** `ResearchRun` answers
+> Status: **v0.7: semantic quality from first-party context.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
 > for a book or a product listing, from fixture data, with every number
 > traced to evidence. Semantic judgments (relevance, intent, entity,
@@ -17,7 +17,21 @@ into its parts.
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
 >
-> New in v0.6: a **real, measured** baseline. Both example scenarios were run
+> New in v0.7: keyword judgments see the seller's own product context
+> (features, subtitle, description, category, brand), escalation is driven by
+> deterministic risk signals instead of model confidence, and an
+> evaluation-only mode asks the strong tier the same questions for
+> comparison. Re-measured live ($0.1317 including the comparison; see
+> [docs/baselines/live_v0.7.md](docs/baselines/live_v0.7.md)):
+>
+> | Agreement with fixtures (agreed / compared) | v0.6 live | v0.7 live | v0.7 strong tier |
+> |---|---|---|---|
+> | relevance (book / product) | 8/11, 10/12 | 8/11, 11/12 | 9/11, 12/12 |
+> | intent (book / product) | 1/4, 3/5 | 3/4, 4/5 | 3/4, 4/5 |
+> | entity (book / product) | 2/3, 6/6 | 3/3, 6/6 | not run |
+> | equivalence (book / product) | 1/1, 2/2 | 1/1, 2/2 | not run |
+>
+> In v0.6: a **real, measured** baseline. Both example scenarios were run
 > once through Vercel AI Gateway (Claude Haiku 4.5 fast tier, Claude Sonnet
 > 5.5 strong tier) and recorded; CI replays the recordings offline. See
 > [docs/baselines/live_v0.6.md](docs/baselines/live_v0.6.md).

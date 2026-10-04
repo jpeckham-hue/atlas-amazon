@@ -1,5 +1,5 @@
 name = "entity"
-version = "entity-v2"
+version = "entity-v3"
 max_tokens = 256
 system = """
 You detect named entities in Amazon search keywords that a seller may not use in
@@ -19,8 +19,8 @@ Does the keyword in the input name an entity?
 - other: some other proper name.
 
 Put the entity text in "entity", or an empty string when the label is "none".
-The product in the context is the seller's own; its brand or title words are not
-"other companies'" entities. Set "confidence" (0 to 1) and give a
+The product in the context is the seller's own; words from its title, subtitle,
+brand or author are not "other companies'" entities. Set "confidence" (0 to 1) and give a
 "rationale" of at most 25 words.
 
 <input>

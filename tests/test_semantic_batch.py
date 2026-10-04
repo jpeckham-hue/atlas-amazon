@@ -188,7 +188,7 @@ class TestBatchedJudgments:
         for request in keyword_requests():
             j = by_subject(judgments)[(request.type.value, request.subject)]
             assert j.input_hash == request.input_hash
-            assert j.prompt_version == "judgment_batch-v1" and j.model == FAST.model
+            assert j.prompt_version == "judgment_batch-v2" and j.model == FAST.model
             assert j.rationale and j.confidence == 0.9
             assert j.call["call_evidence_id"] == call.id and j.call["tier"] == "fast"
             assert j.call["batch"] == {"item_id": item_id(request), "items": 9}
@@ -245,92 +245,183 @@ class TestBatchedJudgments:
         assert len(judgments) == 9
 
 
+FEATURES = ["Leak proof lid with carry loop", "Double wall vacuum insulation"]
+
+
+def kw_ctx(kind, keyword):
+    """A request with first-party features in its context (v0.7)."""
+    return JudgmentRequest.about_keyword(
+        kind,
+        keyword,
+        context={
+            "product_title": TITLE,
+            "seeds": ["water bottle"],
+            "category": "physical-product",
+            "features": FEATURES,
+        },
+    )
+
+
 class TestEscalation:
-    def test_low_confidence_escalates_to_strong_and_records_why(self):
+    def test_confident_but_risky_feature_judgment_escalates(self):
+        """High confidence is not a pass: a stated feature rated low is re-asked."""
+
         def answer(request, kind, subject):
-            if request["model"] == FAST.model and (kind, subject) == ("entity", "straw lid"):
-                return {"label": "brand", "entity": "Straw", "confidence": 0.3, "rationale": "?"}
+            if request["model"] == FAST.model and (kind, subject) == ("relevance", "leak proof"):
+                return {"score": 0.3, "confidence": 0.95, "rationale": "Not in the title."}
             return None
 
         transport = batch_transport(answer)
         p = provider(transport, escalation=EscalationPolicy())
-        out, judgments = judge(p)
+        requests = [kw_ctx(k, "leak proof") for k in ("relevance", "entity")]
+        out, judgments = judge(p, requests)
         assert [r["model"] for r in transport.requests] == [FAST.model, STRONG.model]
         assert len(items_of(transport.requests[1])) == 1  # only the flagged item
-        strong_req = transport.requests[1]
-        assert strong_req["thinking"] == {"type": "between_tools"}
-        j = by_subject(judgments)[("entity", "straw lid")]
-        assert j.label == "none" and j.model == STRONG.model and j.call["tier"] == "strong"
+        assert transport.requests[1]["thinking"] == {"type": "between_tools"}
+        j = by_subject(judgments)[("relevance", "leak proof")]
+        assert j.score == 0.9 and j.model == STRONG.model and j.call["tier"] == "strong"
         esc = j.call["escalation"]
-        assert esc["reason"] == "low_confidence" and esc["from_model"] == FAST.model
-        assert esc["from_result"] == {"label": "brand", "entity": "Straw"}
+        assert esc["reason"] == "feature_underrated" and "Leak proof lid" in esc["detail"]
+        assert esc["from_result"] == {"score": 0.3} and esc["from_confidence"] == 0.95
         calls = {e.id for e in out if e.kind == "semantic_call"}
         assert esc["from_call_evidence_id"] in calls and j.call["call_evidence_id"] in calls
-        assert len(judgments) == 9  # still one judgment per request
         summary = p.usage.summary("r1")
         assert (summary.fast_calls, summary.strong_calls, summary.escalations) == (1, 1, 1)
         assert [e.outcome for e in p.escalation_events] == ["strong_answered"]
 
-    def test_no_escalation_when_confident(self):
+    def test_low_confidence_alone_does_not_escalate(self):
+        def answer(request, kind, subject):
+            return {**ANSWERS[kind], "confidence": 0.1}
+
+        transport = batch_transport(answer)
+        p = provider(transport, escalation=EscalationPolicy())
+        reqs = [kw_ctx(k, "leak proof") for k in ("relevance", "entity")]  # relevance 0.9 fits
+        _, judgments = judge(p, reqs)
+        assert len(transport.requests) == 1 and p.escalation_events == []
+        assert {j.confidence for j in judgments} == {0.1}  # kept as metadata
+
+    def test_no_escalation_when_consistent(self):
         transport = batch_transport()
         p = provider(transport, escalation=EscalationPolicy())
-        judge(p)
+        judge(p, keyword_requests(KEYWORDS[:2]))
         assert len(transport.requests) == 1 and p.escalation_events == []
+
+    @pytest.mark.parametrize(
+        ("request_", "answer", "reason"),
+        [
+            (  # high relevance, no first-party support at all
+                kw("relevance", "straw lid"),
+                {"score": 0.95, "confidence": 0.95, "rationale": "x"},
+                "lexical_disagreement",
+            ),
+            (  # head term labeled ready-to-buy
+                kw("intent", "water bottle"),
+                {"label": "transactional", "score": 0.9, "confidence": 0.9, "rationale": "x"},
+                "intent_structure",
+            ),
+            (  # bare attribute labeled ready-to-buy
+                kw_ctx("intent", "leak proof"),
+                {"label": "transactional", "score": 0.8, "confidence": 0.9, "rationale": "x"},
+                "intent_structure",
+            ),
+            (  # the seller's own brand flagged as a competitor brand
+                kw("entity", "acme bottle"),
+                {"label": "brand", "entity": "Acme", "confidence": 0.99, "rationale": "x"},
+                "entity_conflict",
+            ),
+            (  # different head nouns judged the same product
+                JudgmentRequest.equivalence("bottle water", "water bottle"),
+                {"equivalent": True, "confidence": 0.95, "rationale": "x"},
+                "equivalence_conflict",
+            ),
+            (  # same head noun judged different products
+                JudgmentRequest.equivalence("kids water bottle", "water bottles for kids"),
+                {"equivalent": False, "confidence": 0.95, "rationale": "x"},
+                "equivalence_conflict",
+            ),
+            (  # weak lexical gap plus low confidence
+                kw("relevance", "kids water bottle"),
+                {"score": 0.25, "confidence": 0.4, "rationale": "x"},
+                "low_confidence_with_risk",
+            ),
+        ],
+    )
+    def test_each_risk_signal_escalates_with_its_reason(self, request_, answer, reason):
+        def respond(request, kind, subject):
+            return answer if request["model"] == FAST.model else None
+
+        p = provider(batch_transport(respond), escalation=EscalationPolicy())
+        _, judgments = judge(p, [request_])
+        [event] = p.escalation_events
+        assert event.reason == reason and event.outcome == "strong_answered"
+        assert judgments[0].call["escalation"]["reason"] == reason
+
+    def test_consistent_answers_for_the_same_shapes_do_not_escalate(self):
+        def respond(request, kind, subject):
+            return {
+                "intent": {
+                    "label": "commercial_investigation",
+                    "score": 0.5,
+                    "confidence": 0.9,
+                    "rationale": "x",
+                },
+                "entity": {"label": "none", "entity": "", "confidence": 0.9, "rationale": "x"},
+                "equivalence": {
+                    "equivalent": subject.startswith("kids"),
+                    "confidence": 0.9,
+                    "rationale": "x",
+                },
+            }.get(kind)
+
+        p = provider(batch_transport(respond), escalation=EscalationPolicy())
+        judge(
+            p,
+            [
+                kw("intent", "water bottle"),
+                kw("entity", "acme bottle"),
+                JudgmentRequest.equivalence("kids water bottle", "water bottles for kids"),
+                JudgmentRequest.equivalence("bottle water", "water bottle"),
+            ],
+        )
+        assert p.escalation_events == []
 
     def test_failed_items_escalate_and_strong_failure_keeps_fast_answer(self):
         def mutate(results, request):
             if request["model"] == FAST.model:
                 return results[1:]  # first item missing
-            return [{**r, "confidence": 0.95} for r in results]
+            return results
 
         transport = batch_transport(mutate=mutate)
         p = provider(transport, escalation=EscalationPolicy())
-        _, judgments = judge(p)
-        assert len(transport.requests) == 2 and len(judgments) == 9
+        _, judgments = judge(p, keyword_requests(KEYWORDS[:2]))
+        assert len(transport.requests) == 2 and len(judgments) == 6
         assert p.escalation_events[0].reason == "failed"
 
-        def low(request, kind, subject):
-            if (kind, subject) == ("relevance", "kids water bottle"):
-                return {"score": 0.4, "confidence": 0.2, "rationale": "unsure"}
+        def underrated(request, kind, subject):
+            if kind == "relevance":
+                return {"score": 0.2, "confidence": 0.9, "rationale": "unsupported"}
             return None
 
         def strong_breaks(results, request):
             return [] if request["model"] == STRONG.model else results
 
-        p = provider(batch_transport(low, mutate=strong_breaks), escalation=EscalationPolicy())
-        _, judgments = judge(p)
-        j = by_subject(judgments)[("relevance", "kids water bottle")]
-        assert j.model == FAST.model and j.confidence == 0.2  # fast answer kept
+        p = provider(
+            batch_transport(underrated, mutate=strong_breaks), escalation=EscalationPolicy()
+        )
+        _, judgments = judge(p, [kw_ctx("relevance", "leak proof")])
+        [j] = judgments
+        assert j.model == FAST.model and j.score == 0.2  # fast answer kept
         assert p.escalation_events[0].outcome == "strong_failed, kept fast answer"
 
-    def test_heuristic_disagreement_and_ambiguous_equivalence(self):
-        def answer(request, kind, subject):
-            if request["model"] != FAST.model:
-                return None
-            if (kind, subject) == ("relevance", "straw lid"):
-                return {"score": 0.95, "confidence": 0.6, "rationale": "?"}  # heuristic 0.0
-            if kind == "equivalence":
-                return {"equivalent": True, "confidence": 0.65, "rationale": "maybe"}
-            return None
-
-        policy = EscalationPolicy()
-        p = provider(batch_transport(answer), escalation=policy)
-        reqs = [*keyword_requests(), JudgmentRequest.equivalence("bottle water", "water bottle")]
-        judge(p, reqs)
-        reasons = sorted(e.reason for e in p.escalation_events)
-        assert reasons == ["ambiguous_equivalence", "heuristic_disagreement"]
-
     def test_escalation_cap_bounds_strong_items(self):
-        def answer(request, kind, subject):
-            if request["model"] == FAST.model:
-                return {**ANSWERS[kind], "confidence": 0.1}
-            return None
+        def mutate(results, request):
+            return [] if request["model"] == FAST.model else results  # every item missing
 
-        transport = batch_transport(answer)
+        transport = batch_transport(mutate=mutate)
         p = provider(transport, escalation=EscalationPolicy(max_escalations=2))
         _, judgments = judge(p)
         assert len(items_of(transport.requests[1])) == 2
-        assert len(judgments) == 9  # the rest keep their (low-confidence) fast answers
+        assert len(judgments) == 2  # the other 7 stay unanswered (fallbacks apply)
         outcomes = [e.outcome for e in p.escalation_events]
         assert outcomes.count("cap_reached") == 7 and outcomes.count("strong_answered") == 2
         plan = p.plans_for("r1")[0]
@@ -360,16 +451,19 @@ class TestCacheAndReplay:
         _, again = judge(provider(transport, cache=cache), keyword_requests(KEYWORDS[1:]))
         assert transport.requests == [] and len(again) == 6  # different batch, all hits
 
-    def test_cached_low_confidence_answer_plans_a_certain_escalation(self, tmp_path):
+    def test_cached_risky_answer_plans_a_certain_escalation(self, tmp_path):
         cache = SemanticCache(tmp_path / "cache.jsonl")
 
-        def low(request, kind, subject):
-            return {**ANSWERS[kind], "confidence": 0.2} if kind == "intent" else None
+        def underrated(request, kind, subject):
+            if (kind, subject) == ("relevance", "insulated water bottle"):
+                return {"score": 0.1, "confidence": 0.95, "rationale": "x"}  # baseline 1.0
+            return None
 
-        judge(provider(batch_transport(low), cache=cache))  # escalation disabled
+        reqs = keyword_requests(KEYWORDS[:2])
+        judge(provider(batch_transport(underrated), cache=cache), reqs)  # escalation disabled
         p = provider(batch_transport(), cache=cache, escalation=EscalationPolicy())
-        plan = p.plan(keyword_requests())
-        assert plan.live == 0 and len(plan.escalations) == 1 and plan.escalations[0].items == 3
+        plan = p.plan(reqs)
+        assert plan.live == 0 and len(plan.escalations) == 1 and plan.escalations[0].items == 1
         assert plan.planned_calls == 1 and plan.escalation_reserve == ()
 
     def test_record_then_replay_batched_is_identical_and_offline(self, tmp_path):
@@ -423,9 +517,8 @@ class TestPlan:
         judge(p)
         from atlas_amazon.semantic.transport import request_hash
 
-        assert [c.request_hash for c in plan.batches] == [
-            request_hash(r) for r in transport.requests
-        ]
+        sent = [request_hash(r) for r in transport.requests]
+        assert [c.request_hash for c in plan.batches] == sent[: len(plan.batches)]
 
     def test_run_plan_before_any_live_call(self):
         from atlas_amazon.research import load_scenario
@@ -487,7 +580,7 @@ def test_evidence_lineage_survives_batching_in_a_run():
             f'"id": "{j.call["batch"]["item_id"]}"'
             in call.payload["request"]["messages"][0]["content"]
         )
-    [escalated] = [j for j in model if "escalation" in j.call]
+    [escalated] = [j for j in model if "escalation" in j.call and j.type.value == "equivalence"]
     origin = store.get(escalated.call["escalation"]["from_call_evidence_id"])
     assert escalated.call["batch"]["item_id"] in origin.payload["items"]
     assert origin.payload["tier"] == "fast" and escalated.call["tier"] == "strong"

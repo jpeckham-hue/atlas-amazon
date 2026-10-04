@@ -107,7 +107,7 @@ class TestValidatedJudgments:
         j = parse_judgment(evidence)
         assert (j.score, j.confidence, j.rationale) == (0.9, 0.8, GOOD["rationale"])
         assert j.model == "claude-opus-5-5" and j.provider == "anthropic"
-        assert j.prompt_version == "relevance-v2"
+        assert j.prompt_version == "relevance-v3"
         assert j.input_hash == relevance().input_hash
         assert j.judged_at == datetime.fromisoformat(TS)
         assert j.call["call_evidence_id"] == call.id
@@ -257,7 +257,7 @@ class TestCacheAndReplay:
         from dataclasses import replace
 
         t = provider.templates["relevance"]
-        provider.templates["relevance"] = replace(t, version="relevance-v3")
+        provider.templates["relevance"] = replace(t, version="relevance-v9")
         provider.judge([relevance()], marketplace="US", run_id="r1")
         assert len(provider._caller.transport.requests) == 1
 
@@ -515,6 +515,8 @@ class TestGatewayTransport:
         assert fake.kwargs == {
             "api_key": "gw-fake",
             "base_url": "https://ai-gateway.vercel.sh",
+            "timeout": 120.0,  # a stalled request fails fast instead of after 10 minutes
+            "max_retries": 1,
         }
         assert "gw-fake" not in repr(vars(transport))  # never kept
 

@@ -1,5 +1,5 @@
 name = "relevance"
-version = "relevance-v2"
+version = "relevance-v3"
 max_tokens = 256
 system = """
 You assess Amazon search keywords for a product listing. You judge how relevant
@@ -16,9 +16,10 @@ Scoring guide for "score" (0 to 1):
   product is not shown to have.
 - 0.0-0.2: a different product, a competitor's brand, or a non-shopping query.
 
-Judge only from the product title and seed keywords given. If the keyword depends
-on a feature not stated in the input, treat that feature as unknown and score
-accordingly. Set "confidence" (0 to 1) to how sure you are, and give a
+Judge only from the context given: the product title, and where present its
+subtitle, category, brand or author, features, description and seed keywords.
+What the context states is true of the product; a feature it does not state
+is unknown, so score accordingly. Set "confidence" (0 to 1) to how sure you are, and give a
 "rationale" of at most 25 words a reviewer can verify against the input.
 
 <input>

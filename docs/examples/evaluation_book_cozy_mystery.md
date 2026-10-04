@@ -16,11 +16,11 @@ Relevance agreement means abs(score difference) <= 0.2.
 ## relevance disagreements
 
 - **small town**: fixture judgments `0.3` vs replayed model `0.65`
-  - fixture judgments: A setting word; on its own not a book search. (`ev_2c5d1441b8308bf4825ef221`)
-  - replayed model: A small-town setting is a core cozy-mystery convention. (`ev_cec6cac452ff96fccecc92f8`)
+  - fixture judgments: A setting word; on its own not a book search. (`ev_f2290096163f13685ba36934`)
+  - replayed model: A small-town setting is a core cozy-mystery convention. (`ev_4e227533ebaacef9f940b8fe`)
 
 ## intent disagreements
 
 - **cozy mystery**: fixture judgments `{'label': 'commercial_investigation', 'score': 0.7}` vs replayed model `{'label': 'transactional', 'score': 0.8}`
-  - fixture judgments: Genre browsing. (`ev_8b676afc6e54ac3e2de275fa`)
-  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_e20afe106ab9bb69ed883ff3`)
+  - fixture judgments: Genre browsing. (`ev_5ba3a4fc12ef42bbc77b7781`)
+  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_a4f1591083c09663ad4eae47`)

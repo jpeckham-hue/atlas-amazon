@@ -1,5 +1,5 @@
 name = "judgment_batch"
-version = "judgment_batch-v1"
+version = "judgment_batch-v2"
 # Hard cap. The actual max_tokens of a batch request is computed from the
 # items it contains (see semantic/budgets.py) and never exceeds this.
 max_tokens = 8192
@@ -14,6 +14,13 @@ Each item has an "id", a "type", and either a "keyword" with a "context"
 reference, or two "phrases". Judge every item on its own; items do not
 influence each other.
 
+A context describes the seller's own product: "product_title", optional
+"subtitle", "category", "brand" or "author", "features" (the seller's own
+statements about the product), "description" (the seller's listing text) and
+"seeds" (keywords the seller targets). Treat what the context states as
+true of the product. Treat anything it does not state as unknown; never
+assume an unstated feature.
+
 type "relevance": how relevant the keyword is to the product in its context.
 "score" (0 to 1):
 - 0.9-1.0: names this exact product type and its defining attributes.
@@ -21,8 +28,9 @@ type "relevance": how relevant the keyword is to the product in its context.
 - 0.3-0.5: related, but a different variant, audience, or feature this product
   is not shown to have.
 - 0.0-0.2: a different product, a competitor's brand, or a non-shopping query.
-Judge only from the product title and seed keywords. Treat any feature not
-stated there as unknown.
+Judge only from the context. A keyword naming a feature, setting or element
+the context states (in the title, subtitle, features or description) is
+relevant to this product.
 
 type "intent": the search intent behind the keyword. "label" is one of:
 - transactional: ready to buy a specific kind of item.
@@ -31,6 +39,10 @@ type "intent": the search intent behind the keyword. "label" is one of:
 - navigational: looking for a specific brand, store, or listing.
 "score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
 ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
+A broad category or genre on its own (for example "running shoes") is usually
+commercial_investigation, and so is a bare attribute (for example
+"waterproof"); transactional fits specific queries such as "mens trail
+running shoes size 10".
 
 type "entity": does the keyword name an entity the seller may not use in their
 own listing or backend keywords? "label" is one of:
@@ -42,8 +54,8 @@ own listing or backend keywords? "label" is one of:
 - product_line: a named product line or series of another company.
 - other: some other proper name.
 Put the entity text in "entity", or an empty string when the label is "none".
-Words from the product title in the context belong to the seller, not to
-another company.
+Words from the product's own title, subtitle, brand or author belong to the
+seller, not to another company.
 
 type "equivalence": the two phrases use the same words in a different order.
 "equivalent" is true only if a shopper typing either phrase wants the same kind

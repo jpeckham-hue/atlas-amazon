@@ -88,6 +88,9 @@ class BatchSettings:
             raise ValueError("max_items must be >= 1")
 
 
+STRONG_ONLY = "strong_only"
+
+
 @dataclass(frozen=True, slots=True)
 class EscalationEvent:
     run_id: str | None
@@ -152,11 +155,24 @@ class BatchedJudgmentProvider:
         ledger: UsageLedger | None = None,
         cache: SemanticCache | None = None,
         name: str = "anthropic",
+        evaluation: str | None = None,
     ) -> None:
+        """`evaluation="strong_only"` is a benchmarking mode, never a production path:
+        every item goes to the strong tier, nothing escalates, and the provider
+        refuses to serve a `ResearchRun` (`evaluation_only`). Use it through
+        `semantic.comparison.run_strong_comparison`, which keeps its answers
+        apart from the production judgments.
+        """
+        if evaluation not in (None, STRONG_ONLY):
+            raise ValueError(f"unknown evaluation mode {evaluation!r}")
         self.name = name
         self.transport = transport
         self.tiers = tiers or ModelTiers()
         self.batching = batching or BatchSettings()
+        self.evaluation_only = evaluation == STRONG_ONLY
+        self.primary = STRONG if self.evaluation_only else FAST
+        if self.evaluation_only:
+            escalation = EscalationPolicy.disabled()
         self.escalation = escalation if escalation is not None else EscalationPolicy()
         self.usage = ledger or UsageLedger()
         self.cache = cache
@@ -215,11 +231,11 @@ class BatchedJudgmentProvider:
         t = _Triage(items)
         cap = self.escalation.max_escalations if self.escalation.can_escalate else 0
         for item in items:
-            strong = self._cached(STRONG, item)
+            strong = None if self.evaluation_only else self._cached(STRONG, item)
             if strong is not None:
                 t.strong_cached[item.id] = strong
                 continue
-            fast = self._cached(FAST, item)
+            fast = self._cached(self.primary, item)
             if fast is None:
                 t.live.append(item)
                 continue
@@ -260,7 +276,9 @@ class BatchedJudgmentProvider:
 
     def _plan_from(self, t: _Triage) -> SemanticCallPlan:
         by_id = {i.id: i for i in t.items}
-        fast_calls = tuple(self._planned(FAST, g, exact=True) for g in self._batches(t.live))
+        fast_calls = tuple(
+            self._planned(self.primary, g, exact=True) for g in self._batches(t.live)
+        )
         certain_items = [by_id[i] for i in t.certain]
         certain_calls = tuple(
             self._planned(STRONG, g, exact=True) for g in self._batches(certain_items)
@@ -679,16 +697,20 @@ class BatchedJudgmentProvider:
         for iid, entry in triage.strong_cached.items():
             final[iid] = self._from_cache(STRONG, by_id[iid], entry, marketplace, run_id, calls)
         for iid, entry in triage.fast_cached.items():
-            final[iid] = self._from_cache(FAST, by_id[iid], entry, marketplace, run_id, calls)
+            final[iid] = self._from_cache(
+                self.primary, by_id[iid], entry, marketplace, run_id, calls
+            )
         for iid, (entry, _, _) in triage.certain.items():
-            fast[iid] = self._from_cache(FAST, by_id[iid], entry, marketplace, run_id, calls)
+            fast[iid] = self._from_cache(
+                self.primary, by_id[iid], entry, marketplace, run_id, calls
+            )
 
         halted = False
         try:
             for group in self._batches(triage.live):
                 fast.update(
                     self._run_batch(
-                        FAST, group, marketplace=marketplace, run_id=run_id, calls=calls
+                        self.primary, group, marketplace=marketplace, run_id=run_id, calls=calls
                     )
                 )
         except _Halt:

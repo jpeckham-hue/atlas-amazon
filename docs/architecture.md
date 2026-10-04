@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.6), `·` = planned.
+`✓` = exists (v0.7), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,7 +59,7 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
-│   ├── baselines/                 ✓ live semantic baseline (v0.6, measured), golden
+│   ├── baselines/                 ✓ live semantic baselines (v0.6 frozen, v0.7 golden)
 │   ├── benchmarks/                ✓ semantic cost benchmark (v0.4b vs v0.5), golden
 │   ├── examples/                  ✓ golden example research reports
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
@@ -104,7 +104,8 @@ atlas-amazon/
 │   │   ├── tasks.py               ✓ research priority -> task registry
 │   │   └── scenarios.py           ✓ offline scenario loader
 │   ├── judgments/
-│   │   └── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
+│   │   ├── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
+│   │   └── context.py             ✓ first-party product context for judgments (v0.7)
 │   ├── semantic/
 │   │   ├── prompts/*.toml         ✓ versioned prompt templates + lock.json fingerprints
 │   │   ├── batched.py             ✓ BatchedJudgmentProvider (v0.5 default): batch, escalate
@@ -115,6 +116,8 @@ atlas-amazon/
 │   │   ├── plan.py                ✓ SemanticCallPlan / RunSemanticPlan, expected + worst cost
 │   │   ├── deterministic.py       ✓ RuleJudgmentProvider: questions plain code answers
 │   │   ├── benchmark.py           ✓ v0.4b vs v0.5 comparison from recordings
+│   │   ├── comparison.py          ✓ strong-tier comparison (evaluation only)
+│   │   ├── recorded.py            ✓ judgments re-validated from old recordings
 │   │   ├── llm.py                 ✓ LLMJudgmentProvider (one call each), LLMReviewThemeProvider
 │   │   ├── transport.py           ✓ Anthropic (live) / Recording / Replay / Scripted
 │   │   ├── cache.py               ✓ persistent semantic cache
@@ -995,6 +998,111 @@ rationales is in the baseline report):
   lost its first-party support because the deterministic matcher depends on
   the theme's wording.
 
+## Semantic quality: context and risk-based escalation (v0.7)
+
+### First-party product context (`judgments/context.py`)
+
+Keyword judgments (relevance, intent, entity) now receive
+`product_context(product, listing, recipe, seeds)`: title, seeds, category
+(recipe id), subtitle (books), brand / author when supplied, the seller's
+features (product attributes, else listing bullets; at most 10) and the
+listing description (at most 500 characters, cut at a word boundary with
+`description_truncated: true`). Competitor catalog data, reviews and themes
+are never included. Empty fields are omitted. The batch prompt hoists one
+shared context per batch, so the extra context costs input tokens once per
+call (book input tokens went from 6,755 to 12,225 for the production calls).
+`ResearchConfig(product_context=False)` reproduces the v0.6 context.
+
+The context is part of each request's input, so input hashes, cache keys
+and replay hashes change with it: old cache entries simply miss. Prompts
+moved to `judgment_batch-v2` (and `relevance-v3`, `intent-v3`, `entity-v3`):
+stated context is fact, unstated features are unknown, and intent gets
+neutral browse-vs-buy guidance.
+
+### Risk-signal escalation (`semantic/escalation.py`)
+
+Confidence is kept as metadata only. Escalation reasons: `failed`,
+`feature_underrated`, `lexical_disagreement` (relevance vs a feature-aware
+lexical baseline), `intent_structure` (`transactional` for a generic head
+term or bare attribute), `entity_conflict` (the seller's own metadata
+flagged as an entity), `equivalence_conflict` (contradicts the head-noun
+rule), and `low_confidence_with_risk` (low confidence plus a weaker lexical
+gap; never low confidence alone). Each escalated judgment records the reason
+and the fast answer.
+
+### Strong-tier comparison (`semantic/comparison.py`)
+
+`BatchedJudgmentProvider(..., evaluation="strong_only")` sends every item to
+the strong tier, never escalates, and refuses to serve a `ResearchRun`.
+`run_strong_comparison` asks it the same judgments the production pipeline
+answered, under a separate provider name (`anthropic-strong-eval`), so strong
+answers are kept apart and never overwrite production ones.
+`evaluate_tier_comparison` scores production and strong tier against the
+same reference separately, plus a head-to-head.
+
+### Reading old recordings (`semantic/recorded.py`)
+
+v0.6 requests no longer replay through the v0.7 pipeline (their hashes
+changed). `recorded_judgments` rebuilds and re-validates every judgment in a
+batch recording (each item's input is reconstructed and must match its ID),
+so v0.6 results stay comparable; the documented v0.6 agreement is reproduced
+from the raw recordings in `tests/test_live_baseline_v06.py`.
+
+### Live re-measurement
+
+One capped live run per scenario plus a relevance and intent strong-tier
+comparison, through Vercel AI Gateway (production runs first, comparisons
+only within the remaining budget). A first attempt stalled at the gateway
+before any response and was billed nothing (confirmed by the gateway credit
+balance); `GatewayTransport` now times out after 120 s per attempt with one
+retry.
+
+| Measured | book | product | total |
+|---|---|---|---|
+| Production calls (fast / strong) | 5 (2 / 3) | 5 (3 / 2) | 10 |
+| Production cost | $0.0355 | $0.0355 | $0.0710 |
+| Strong comparison (calls / items / cost) | 1 / 24 / $0.0270 | 1 / 32 / $0.0336 | $0.0606 |
+| Escalations (reason) | 2 (equivalence_conflict, lexical_disagreement) | 2 (lexical_disagreement x2) | 4 |
+| **Total** | $0.0625 | $0.0691 | **$0.1317** |
+
+Agreement with the fixture judgments (agreed / compared):
+
+| | v0.6 live | v0.7 production | v0.7 strong tier |
+|---|---|---|---|
+| book relevance / intent / entity / equivalence | 8/11, 1/4, 2/3, 1/1 | 8/11, 3/4, 3/3, 1/1 | 9/11, 3/4 (relevance and intent only) |
+| product relevance / intent / entity / equivalence | 10/12, 3/5, 6/6, 2/2 | 11/12, 4/5, 6/6, 2/2 | 12/12, 4/5 (relevance and intent only) |
+
+Focus keywords (fixture / v0.6 / v0.7 production / v0.7 strong):
+"leak proof" relevance 0.75 / 0.5 / 0.9 / 0.7 and "double wall vacuum"
+0.8 / 0.6 / 0.95 / 0.75, both fixed by the stated features; "amateur sleuth"
+0.8 / 0.6 / 0.7 / 0.6 (escalated, and the rationale cites the description);
+"harbor town" 0.2 / 0.5 / 0.8 / 0.45, now further from the fixture. Intent
+bias: live `transactional` labels fell from 21 of 29 to 11 of 29 (the strong
+tier: 6 of 29), and the head terms "cozy mystery", "mystery books" and
+"water bottle" now agree with the fixtures.
+
+**Findings**
+
+* Product context plus the prompt change made the larger improvement, at
+  the production price: the feature keywords were fixed by context, and the
+  intent bias (5 more intent agreements were possible; 3 were gained) by the
+  intent guidance. The four escalations moved one fixture comparison
+  ("amateur sleuth").
+* Richer context makes the fast tier over-rate generic and setting terms:
+  "small town" 0.3 -> 0.7, "mystery books" 0.6 -> 0.8, "harbor town"
+  0.2 -> 0.8. The strong tier stays near the fixture on "small town" and
+  "mystery books"; none of the current risk signals catches this. That is
+  the strong tier's +1 relevance agreement per scenario.
+* Downstream: keyword families, the set of entity-blocked keywords and
+  audit-valid proposals are unchanged; every judgment, theme and signal keeps
+  its evidence lineage. Rankings and recommendations shift (product: the
+  feature keywords move up; book: "small town" and "harbor town" are now
+  recommended).
+* Review-theme opportunity support still depends on theme wording ("keeps
+  contents cold for long periods" lost its support again).
+* Single runs cannot separate prompt effects from run-to-run variation;
+  the report labels those changes as such.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -1022,24 +1130,27 @@ rationales is in the baseline report):
    batched fast-tier calls with ID-matched partial-failure handling,
    selective strong-tier escalation, schema-derived output budgets, call
    plans with expected and worst-case cost, and a v0.4b vs v0.5 benchmark.
-7. **v0.6 (this release)**: live semantic baseline. Vercel AI Gateway as the
+7. **v0.6**: live semantic baseline. Vercel AI Gateway as the
    default live transport (`AI_GATEWAY_API_KEY`), one capped live run per
    scenario, real recordings replayed offline in CI, measured cost and
    per-type agreement.
-8. **v0.7 (recommended)**: semantic quality, driven by the baseline.
-   * Give judgments the product's feature list (a prompt input change with a
-     version bump), then re-measure relevance agreement.
-   * Replace confidence-threshold escalation with signals that fired or would
-     have: failures (kept), plus targeted rules such as escalating intent for
-     short head terms, and re-measure on the recordings.
-   * One capped run of the strong tier on the same items, to learn whether
-     escalating more would fix the intent and relevance gaps or whether the
-     prompts are the issue.
-   * Make the review-opportunity support matcher use theme terms, not only
-     the theme label.
-   Then the first read-only live market-data adapter with the same
-   record/replay discipline.
-9. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+8. **v0.7 (this release)**: first-party product context for judgments,
+   risk-signal escalation, an evaluation-only strong-tier comparison, and a
+   live re-measurement ($0.1317).
+9. **v0.8 (recommended)**: close the remaining relevance gap, then start market
+   data.
+   * Route **relevance only** to the strong tier in production (it agreed on
+     21/23 relevance comparisons vs 19/23 for the fast tier, at about $0.001
+     per strong-tier judgment, a few cents per product), or add a
+     risk signal for generic or setting terms rated highly with richer
+     context. Measure both on the recordings before choosing.
+   * Review the fixture judgments themselves against the richer context
+     (some, like "stainless steel" and "harbor town", predate the description
+     being visible) and record decisions as human judgments.
+   * Make review-opportunity support use theme terms, not only the label.
+   * Then the first read-only live market-data adapter (autocomplete or
+     SP-API Catalog) with the same plan / cap / record / replay discipline.
+10. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.

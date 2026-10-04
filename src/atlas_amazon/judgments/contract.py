@@ -162,17 +162,28 @@ class JudgmentRequest:
 
     @classmethod
     def about_keyword(
-        cls, kind: JudgmentType, keyword: str, *, product_title: str, seeds: Sequence[str] = ()
+        cls,
+        kind: JudgmentType,
+        keyword: str,
+        *,
+        product_title: str | None = None,
+        seeds: Sequence[str] = (),
+        context: Mapping[str, Any] | None = None,
     ) -> JudgmentRequest:
+        """A keyword judgment request.
+
+        `context` (see `judgments.context.product_context`) replaces the
+        minimal {"product_title", "seeds"} context; it must name the product.
+        """
         if kind is JudgmentType.EQUIVALENCE:
             raise JudgmentError("use JudgmentRequest.equivalence for phrase pairs")
-        return cls(
-            kind,
-            {
-                "keyword": normalize_text(keyword),
-                "context": {"product_title": product_title, "seeds": list(seeds)},
-            },
-        )
+        if context is None:
+            if product_title is None:
+                raise JudgmentError("about_keyword needs product_title or context")
+            context = {"product_title": product_title, "seeds": list(seeds)}
+        elif not context.get("product_title"):
+            raise JudgmentError("context must include product_title")
+        return cls(kind, {"keyword": normalize_text(keyword), "context": dict(context)})
 
     @classmethod
     def equivalence(cls, a: str, b: str) -> JudgmentRequest:

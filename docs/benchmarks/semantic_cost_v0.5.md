@@ -8,15 +8,15 @@ Regenerate with `ATLAS_REGEN_EXAMPLES=1 pytest tests/test_benchmark.py`.
 
 | Scenario | v0.4b calls | v0.5 calls (recorded) | v0.5 planned / expected / worst |
 |---|---|---|---|
-| book_cozy_mystery | 41 | 4 | 3 / 4 / 5 |
-| physical_water_bottle | 60 | 5 | 4 / 5 / 6 |
+| book_cozy_mystery | 41 | 5 | 3 / 4 / 5 |
+| physical_water_bottle | 60 | 6 | 4 / 5 / 6 |
 
 ## Cost per run
 
 | Scenario | v0.4b expected | v0.5 expected (recorded) | v0.5 expected (plan) | v0.4b worst case | v0.5 worst case (recorded) | v0.5 worst case (plan) |
 |---|---|---|---|---|---|---|
-| book_cozy_mystery | $0.0966 | $0.0183 | $0.0217 | $3.6663 | $0.0574 | $0.0831 |
-| physical_water_bottle | $0.1395 | $0.0219 | $0.0275 | $5.2554 | $0.0683 | $0.0961 |
+| book_cozy_mystery | $0.0966 | $0.0243 | $0.0238 | $3.6663 | $0.0684 | $0.0846 |
+| physical_water_bottle | $0.1395 | $0.0291 | $0.0302 | $5.2554 | $0.0831 | $0.0977 |
 
 The plan's worst case includes the escalation reserve (strong-tier calls the policy could add up to its cap); the recorded worst case prices only the calls that were made, each at its full `max_tokens`.
 
@@ -24,14 +24,14 @@ The plan's worst case includes the escalation reserve (strong-tier calls the pol
 
 | Scenario | Judgments | v0.4b expected / judgment | v0.5 expected / judgment (plan) |
 |---|---|---|---|
-| book_cozy_mystery | 40 | $0.0024 | $0.0005 |
+| book_cozy_mystery | 40 | $0.0024 | $0.0006 |
 | physical_water_bottle | 59 | $0.0024 | $0.0005 |
 
 ## Semantic judgments
 
 | Scenario | Requested (v0.4b and v0.5) | Human | Deterministic | Not needed | Model | Escalated | Downstream identical |
 |---|---|---|---|---|---|---|---|
-| book_cozy_mystery | 40 | 2 | 1 | 0 | 37 | 1 | yes |
-| physical_water_bottle | 59 | 0 | 5 | 6 | 48 | 1 | yes |
+| book_cozy_mystery | 40 | 2 | 1 | 0 | 37 | 5 | yes |
+| physical_water_bottle | 59 | 0 | 5 | 6 | 48 | 7 | yes |
 
 Requested judgments are the same in both versions. v0.4b sent every one of them (plus one review-theme call) to the model, one call each. v0.5 answers human decisions and deterministic questions without a model, skips relevance and intent for families that cannot be ranked, and batches the rest. "Downstream identical" compares ranking, entity flags, proposals, recommendations and families between individual and batched execution against the same scripted answers.

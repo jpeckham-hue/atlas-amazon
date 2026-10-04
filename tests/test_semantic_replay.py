@@ -66,25 +66,28 @@ DEVIATIONS = {
         },
     },
 }
-# Scripted answers for one requested model only: an uncertain fast-tier answer
-# that the policy escalates; the strong tier then answers from the fixture.
+# Scripted answers for one requested model only: a confident but risky
+# fast-tier answer that a deterministic risk signal escalates; the strong tier
+# then answers from the fixture.
 MODEL_DEVIATIONS = {
     "book_cozy_mystery": {
         FAST.model: {
-            ("entity", "harbor town"): {
-                "label": "other",
-                "entity": "Harbor Town",
-                "confidence": 0.4,
-                "rationale": "Possibly a place name used as a series title.",
+            # Confident but risky: the "brand" is the book's own subtitle words.
+            ("entity", "cozy mystery"): {
+                "label": "brand",
+                "entity": "Cozy Mystery",
+                "confidence": 0.95,
+                "rationale": "Looks like a series brand.",
             }
         }
     },
     "physical_water_bottle": {
         FAST.model: {
+            # Confident but contradicts the head-noun rule (both are bottles).
             ("equivalence", "kids water bottle || water bottles for kids"): {
-                "equivalent": True,
-                "confidence": 0.6,
-                "rationale": "Probably the same request.",
+                "equivalent": False,
+                "confidence": 0.9,
+                "rationale": "Different phrasing, so different requests.",
             }
         }
     },

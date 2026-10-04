@@ -46,6 +46,10 @@ from atlas_amazon.semantic.records import ChecksummedJsonl, ensure_no_secrets
 LIVE_ENV_FLAG = "ATLAS_ALLOW_LIVE_LLM"
 GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh"
 GATEWAY_KEY_ENV = ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN")  # first one set wins
+# A stalled gateway request fails within this many seconds (per attempt) instead
+# of the SDK's 10-minute default, and surfaces as a recorded transport error.
+GATEWAY_TIMEOUT_S = 120.0
+GATEWAY_MAX_RETRIES = 1
 DEFAULT_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
@@ -182,9 +186,13 @@ class GatewayTransport(AnthropicTransport):
         allow_live: bool | None = None,
         clock: Callable[[], datetime] | None = None,
         base_url: str = GATEWAY_BASE_URL,
+        timeout_s: float = GATEWAY_TIMEOUT_S,
+        max_retries: int = GATEWAY_MAX_RETRIES,
     ) -> None:
         super().__init__(client=client, allow_live=allow_live, clock=clock)
         self.base_url = base_url
+        self.timeout_s = timeout_s
+        self.max_retries = max_retries
 
     def _make_client(self, anthropic: Any) -> Any:
         key = next((os.environ[n] for n in GATEWAY_KEY_ENV if os.environ.get(n)), None)
@@ -194,7 +202,12 @@ class GatewayTransport(AnthropicTransport):
                 f"(or {GATEWAY_KEY_ENV[1]})"
             )
         # Passed straight to the SDK client; never kept on this object or logged.
-        return anthropic.Anthropic(api_key=key, base_url=self.base_url)
+        return anthropic.Anthropic(
+            api_key=key,
+            base_url=self.base_url,
+            timeout=self.timeout_s,
+            max_retries=self.max_retries,
+        )
 
     def _params(self, request: Mapping[str, Any]) -> dict[str, Any]:
         params = thaw(request)
