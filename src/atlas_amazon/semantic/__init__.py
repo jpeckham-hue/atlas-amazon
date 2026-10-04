@@ -26,16 +26,27 @@ from atlas_amazon.semantic.plan import (
 from atlas_amazon.semantic.pricing import ModelPrice, PricingTable
 from atlas_amazon.semantic.prompts import PromptTemplate, load_template
 from atlas_amazon.semantic.records import SecretLeakError, ensure_no_secrets, find_secrets
-from atlas_amazon.semantic.tiers import FAST, OPUS_STRONG, STRONG, ModelTier, ModelTiers
+from atlas_amazon.semantic.tiers import (
+    DIRECT_FAST,
+    DIRECT_OPUS_STRONG,
+    DIRECT_STRONG,
+    FAST,
+    OPUS_STRONG,
+    STRONG,
+    ModelTier,
+    ModelTiers,
+)
 from atlas_amazon.semantic.transport import (
     LIVE_ENV_FLAG,
     AnthropicTransport,
+    GatewayTransport,
     LiveCallsDisabled,
     RecordingTransport,
     ReplayMiss,
     ReplayTransport,
     ScriptedTransport,
     TransportResponse,
+    default_live_transport,
 )
 from atlas_amazon.semantic.usage import (
     BudgetExceeded,
@@ -45,6 +56,9 @@ from atlas_amazon.semantic.usage import (
 )
 
 __all__ = [
+    "DIRECT_FAST",
+    "DIRECT_OPUS_STRONG",
+    "DIRECT_STRONG",
     "FAST",
     "LIVE_ENV_FLAG",
     "OPUS_STRONG",
@@ -58,6 +72,7 @@ __all__ = [
     "EscalationPolicy",
     "EscalationReason",
     "EvaluationReport",
+    "GatewayTransport",
     "HumanJudgmentProvider",
     "JudgmentResolution",
     "LLMJudgmentProvider",
@@ -83,6 +98,7 @@ __all__ = [
     "SemanticUsageSummary",
     "TransportResponse",
     "UsageLedger",
+    "default_live_transport",
     "ensure_no_secrets",
     "evaluate_judgments",
     "find_secrets",

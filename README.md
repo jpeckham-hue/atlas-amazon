@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.5: semantic cost and call efficiency.** `ResearchRun` answers
+> Status: **v0.6: live semantic baseline.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
 > for a book or a product listing, from fixture data, with every number
 > traced to evidence. Semantic judgments (relevance, intent, entity,
@@ -17,7 +17,25 @@ into its parts.
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
 >
-> New in v0.5: the same semantic capability with far fewer calls and a
+> New in v0.6: a **real, measured** baseline. Both example scenarios were run
+> once through Vercel AI Gateway (Claude Haiku 4.5 fast tier, Claude Sonnet
+> 5.5 strong tier) and recorded; CI replays the recordings offline. See
+> [docs/baselines/live_v0.6.md](docs/baselines/live_v0.6.md).
+>
+> | Measured (live, 2026-10-04) | book | product |
+> |---|---|---|
+> | API calls (fast / strong) | 3 (2 / 1) | 5 (3 / 2) |
+> | Input / output tokens | 6,755 / 2,392 | 11,602 / 3,049 |
+> | Measured cost | $0.0225 | $0.0332 |
+>
+> Total $0.0557 against a planned $0.0515 expected / $0.1846 worst case. Live
+> judgments agree with the fixture judgments on equivalence (100%) and on
+> which keywords are entity-blocked (100%), less on relevance (73-83%) and
+> intent (25-60%); rankings and recommendations shift. Details and the design
+> implications are in
+> [docs/architecture.md](docs/architecture.md#live-semantic-baseline-v06).
+>
+> From v0.5: the same semantic capability with far fewer calls and a
 > bounded worst case. On the two example scenarios (synthetic recordings,
 > estimates only; see [the benchmark](docs/benchmarks/semantic_cost_v0.5.md)):
 >
@@ -210,27 +228,31 @@ Live calls are **off by default** and never happen in tests. To run one:
 pip install -e ".[llm]"
 ```
 
-Credentials come from `ANTHROPIC_API_KEY` or an `ant auth login` profile;
-atlas never reads or stores them. Enable live calls for the session with
+Live calls go through **Vercel AI Gateway** by default (`default_live_transport()`,
+Anthropic-compatible Messages API). The credential is `AI_GATEWAY_API_KEY` (or
+`VERCEL_OIDC_TOKEN`) from the environment; it is handed to the SDK client and never
+stored, logged or recorded. `ANTHROPIC_API_KEY` is not used (the direct
+`AnthropicTransport` remains available with `DIRECT_FAST` / `DIRECT_STRONG` tiers).
+Requests are pinned to Anthropic as the routed provider. Enable live calls with
 `ATLAS_ALLOW_LIVE_LLM=1`, then:
 
 ```py
 from atlas_amazon.evidence import InMemoryEvidenceStore
 from atlas_amazon.research import ResearchRun, load_scenario
 from atlas_amazon.semantic import (
-    AnthropicTransport,
     BatchedJudgmentProvider,
     LLMReviewThemeProvider,
     RecordingTransport,
     SemanticBudget,
     SemanticCache,
     UsageLedger,
+    default_live_transport,
     render_plan_markdown,
 )
 
 ledger = UsageLedger(budget=SemanticBudget(max_live_calls=10, max_cost_usd=0.25))
 cache = SemanticCache(".atlas/semantic-cache.jsonl")
-live = RecordingTransport(AnthropicTransport(), ".atlas/book.recording.local.jsonl")
+live = RecordingTransport(default_live_transport(), ".atlas/book.recording.local.jsonl")
 scenario = load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json").with_providers(
     judgments=BatchedJudgmentProvider(live, ledger=ledger, cache=cache),
     review_themes=LLMReviewThemeProvider(live, ledger=ledger, cache=cache),

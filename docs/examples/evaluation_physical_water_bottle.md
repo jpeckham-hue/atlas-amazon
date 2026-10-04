@@ -17,10 +17,10 @@ Relevance agreement means abs(score difference) <= 0.2.
 
 - **straw lid**: fixture judgments `0.2` vs replayed model `0.5`
   - fixture judgments: The product has no straw lid. (`ev_0df963b1d3731b3fd1226745`)
-  - replayed model: Straw lids are a common accessory in this category. (`ev_58b1375bc0fd4bc0c9b8e7a7`)
+  - replayed model: Straw lids are a common accessory in this category. (`ev_ab8f4bb6eaa1ce047c71387a`)
 
 ## intent disagreements
 
 - **water bottle**: fixture judgments `{'label': 'commercial_investigation', 'score': 0.6}` vs replayed model `{'label': 'transactional', 'score': 0.75}`
   - fixture judgments: Broad browsing query. (`ev_78f884733936d9df04876941`)
-  - replayed model: Most shoppers searching this phrase buy within the session. (`ev_8256f0417b139b11e93ec8ea`)
+  - replayed model: Most shoppers searching this phrase buy within the session. (`ev_20c7c31807080fb3678dac4a`)

@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.5), `·` = planned.
+`✓` = exists (v0.6), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,6 +59,7 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
+│   ├── baselines/                 ✓ live semantic baseline (v0.6, measured), golden
 │   ├── benchmarks/                ✓ semantic cost benchmark (v0.4b vs v0.5), golden
 │   ├── examples/                  ✓ golden example research reports
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
@@ -635,7 +636,8 @@ LLMJudgmentProvider / LLMReviewThemeProvider
    │ miss
  budget check (live transports only) ──refused──▶ stop the batch; heuristics fill in
    ▼
- Transport: AnthropicTransport (live) | ReplayTransport | ScriptedTransport
+ Transport: GatewayTransport (live, default) | AnthropicTransport (live, optional)
+            | ReplayTransport | ScriptedTransport
    │           └ RecordingTransport wraps any transport and saves exchanges
    ▼
  semantic_call Evidence (full request + normalized response)
@@ -649,7 +651,8 @@ LLMJudgmentProvider / LLMReviewThemeProvider
 
 | Transport | Network | Counts as live | Use |
 |---|---|---|---|
-| `AnthropicTransport` | yes, official `anthropic` SDK (optional extra `atlas-amazon[llm]`), lazily imported | yes | real runs; **disabled unless `ATLAS_ALLOW_LIVE_LLM=1`** (or `allow_live=True`) |
+| `GatewayTransport` (default, `default_live_transport()`) | yes, Vercel AI Gateway's Anthropic-compatible Messages API (`https://ai-gateway.vercel.sh`) via the official `anthropic` SDK (optional extra `atlas-amazon[llm]`), lazily imported; auth `AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`; a request's `providerOptions` is sent as a body field | yes | real runs; **disabled unless `ATLAS_ALLOW_LIVE_LLM=1`** (or `allow_live=True`) |
+| `AnthropicTransport` (optional) | yes, direct Anthropic API, credentials resolved by the SDK; refuses gateway-only `providerOptions` | yes | direct runs with the `DIRECT_*` tiers; same opt-in |
 | `RecordingTransport(inner, path)` | as inner | as inner | capture a live run for later replay |
 | `ReplayTransport(path)` | **never** | no | CI and local reproduction; an unrecorded request is a `replay_miss` (unanswered, never invented) |
 | `ScriptedTransport(fn)` | never | configurable | tests; `semantic/synthetic.py` scripts answers from fixture judgments for **synthetic** demo recordings |
@@ -744,7 +747,11 @@ disagreement lists both values and both rationales.
 
 ### Configuration and security
 
-* Credentials come only from the environment or an `ant auth login`
+* Live calls use the Vercel AI Gateway credential (`AI_GATEWAY_API_KEY`,
+  or `VERCEL_OIDC_TOKEN`), read from the environment when the client is
+  created and passed to the SDK; it is never stored on the transport,
+  logged, recorded or put in evidence. The optional direct transport's
+  credentials come only from the environment or an `ant auth login`
   profile, resolved by the SDK. atlas never reads, stores or logs them.
 * Live calls require an explicit opt-in (`ATLAS_ALLOW_LIVE_LLM=1`). The
   test suite clears that flag and makes `anthropic` unimportable.
@@ -839,9 +846,20 @@ explicit fallback and an escalation signal).
 
 | Tier | Default | Request settings | Used for |
 |---|---|---|---|
-| fast | `claude-haiku-4-5` ($1 / $5 per MTok) | no `effort` (Haiku 4.5 rejects it), no thinking, no fallbacks | every batched judgment |
-| strong | `claude-sonnet-5-5` ($2 / $10) | `effort: low`, `thinking: {"type": "between_tools"}` (no extended thinking), no fallbacks (`between_tools` is Sonnet-5.5-only) | escalated items; review themes |
-| `OPUS_STRONG` (optional) | `claude-opus-5-5` ($4 / $20) | `effort: low`, refusal fallbacks, 2,048-token thinking allowance (Opus 5.5 always thinks) | when a stronger strong tier is wanted |
+| fast | `anthropic/claude-haiku-4.5` ($1 / $5 per MTok) | no `effort` (Haiku 4.5 rejects it), no thinking, no fallbacks | every batched judgment |
+| strong | `anthropic/claude-sonnet-5.5` ($2 / $10) | `effort: low`, `thinking: {"type": "between_tools"}` (no extended thinking), no fallbacks (`between_tools` is Sonnet-5.5-only) | escalated items; review themes |
+| `OPUS_STRONG` (optional) | `anthropic/claude-opus-5.5` ($4 / $20) | `effort: low`, 2,048-token thinking allowance (Opus 5.5 always thinks) | when a stronger strong tier is wanted |
+
+Model IDs are Vercel AI Gateway IDs, and every gateway tier sends
+`providerOptions: {"gateway": {"only": ["anthropic"]}}`, so Anthropic's own
+API serves the request: prices are Anthropic list prices (the gateway catalog
+shows the same, read 2026-10-04) and Anthropic-specific request fields keep
+their meaning. The pin is part of the recorded, hashed request. Responses
+report provider-qualified served models (for example
+`anthropic/claude-haiku-4.5`), and `semantic_call` evidence records the
+transport (`vercel-ai-gateway`). `DIRECT_FAST`, `DIRECT_STRONG` and
+`DIRECT_OPUS_STRONG` (with Anthropic's server-side refusal fallback) are the
+same settings for the direct transport.
 
 `ModelTiers(fast=..., strong=...)` makes both configurable. Every judgment
 records the served model (`model`), the requested model and the tier.
@@ -906,6 +924,77 @@ synthetic recordings and plans), and checks that individual and batched
 execution give the same ranking, entity flags, proposals, recommendations
 and families. All figures are estimates from synthetic recordings.
 
+## Live semantic baseline (v0.6)
+
+One live run per example scenario, through Vercel AI Gateway (routed to
+Anthropic), with the unchanged v0.5 pipeline and tiers. Recorded with
+`scripts/record_live_baseline.py` under hard caps (10 calls per scenario,
+$0.25 combined, stop before any call that could exceed the remaining
+budget). The recordings in `tests/fixtures/recordings/live/` are real and
+labeled as such (`synthetic: false`, `transport: vercel-ai-gateway`);
+`tests/test_live_baseline.py` replays them with sockets disabled and
+regenerates [docs/baselines/live_v0.6.md](baselines/live_v0.6.md). A
+one-call strong-tier probe (`gateway_strong_probe.jsonl`, $0.0005) first
+confirmed that the gateway accepts Sonnet 5.5's `between_tools` thinking.
+
+**Measured** (API-reported tokens times list price):
+
+| | book | product | total |
+|---|---|---|---|
+| API calls (fast / strong) | 3 (2 / 1) | 5 (3 / 2) | 8 |
+| Escalations / cache hits | 0 / 0 | 2 / 0 | 2 / 0 |
+| Input / output tokens | 6,755 / 2,392 | 11,602 / 3,049 | 18,357 / 5,441 |
+| Cost | $0.0225 | $0.0332 | **$0.0557** |
+| Plan: expected / worst case | $0.0229 / $0.0858 | $0.0286 / $0.0987 | $0.0515 / $0.1846 |
+
+Agreement with the fixture judgments (per type; every disagreement with both
+rationales is in the baseline report):
+
+| | relevance | intent | entity (label / blocking) | equivalence |
+|---|---|---|---|---|
+| book | 8/11 | 1/4 | 2/3 / 100% | 1/1 |
+| product | 10/12 | 3/5 | 6/6 / 100% | 2/2 |
+
+**What the baseline validates**
+
+* Cost and call count: 8 calls against 7 planned (one escalation batch), and
+  measured cost within 8% of the plan's expected figure.
+* Output budgets: calls used 24-53% of their computed `max_tokens`; nothing
+  was truncated.
+* ID-matched batching with failure escalation: in one 23-item batch the fast
+  model ended normally but silently left out 2 items (relevance and intent
+  for "insulated water bottle"). Matching by item ID caught the omission, the
+  `failed` rule escalated both, and the strong tier answered them. Matching by
+  position would have silently mislabeled them.
+* Structure: keyword families, rejected pairs and the set of entity-blocked
+  keywords match the fixture runs exactly, and the backend proposals still
+  pass the audit.
+
+**What it challenges**
+
+* Confidence-based escalation was inert. Fast-tier confidences ranged from 0.60
+  to 0.99 and none fell below 0.5, so `low_confidence` never fired, and
+  `heuristic_disagreement` (which also needs confidence < 0.8) never did
+  either. Every disagreement with the fixtures came at high confidence: the
+  fast model's self-reported confidence is not a useful escalation signal.
+* Intent is systematically inflated: 21 of 29 live intent labels are
+  `transactional`, including genre and category browsing queries ("cozy
+  mystery", "water bottle") that the fixtures label
+  `commercial_investigation`.
+* Relevance is penalized for features the judgment context does not contain.
+  The context sends only the product title and seed keywords, so features
+  such as "leak proof lid" or "double wall vacuum insulation" (in the
+  product's feature list) read as unknown: "not stated in product title or
+  seeds". That is an input-design limit, not necessarily a model limit.
+* Rankings and recommendations changed materially: in the book, "harbor town"
+  rises from 13th to 10th and is now recommended; in the product, "double wall
+  vacuum" falls from 3rd to 7th, and the gap list swaps kids/straw phrases for
+  attribute phrases (vacuum insulation, double wall, bpa free). Part of this
+  is the live model answering keywords the fixtures never covered.
+* Review themes match in substance, but one opportunity ("keeps drinks cold")
+  lost its first-party support because the deterministic matcher depends on
+  the theme's wording.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -928,19 +1017,29 @@ and families. All figures are estimates from synthetic recordings.
    review themes through the official SDK (opt-in), versioned prompts,
    a persistent cache, record/replay for offline CI, a usage ledger with
    hard call and cost limits, human overrides, and per-type evaluation.
-6. **v0.5 (this release)**: semantic cost and call efficiency. Human and
+6. **v0.5**: semantic cost and call efficiency. Human and
    rule answers first, unrankable families skipped, per-judgment cache,
    batched fast-tier calls with ID-matched partial-failure handling,
    selective strong-tier escalation, schema-derived output budgets, call
    plans with expected and worst-case cost, and a v0.4b vs v0.5 benchmark.
-7. **v0.6 (recommended)**: a real recorded baseline. With approval for the
-   spend, record one live run per scenario, publish measured cost and
-   per-type agreement for the fast and strong tiers against the fixture
-   judgments, and tune the escalation thresholds and batch size from it.
-   Then an override-file workflow (export disagreements, import reviewer
-   decisions) and the first read-only live market-data adapter with the
-   same record/replay discipline.
-8. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+7. **v0.6 (this release)**: live semantic baseline. Vercel AI Gateway as the
+   default live transport (`AI_GATEWAY_API_KEY`), one capped live run per
+   scenario, real recordings replayed offline in CI, measured cost and
+   per-type agreement.
+8. **v0.7 (recommended)**: semantic quality, driven by the baseline.
+   * Give judgments the product's feature list (a prompt input change with a
+     version bump), then re-measure relevance agreement.
+   * Replace confidence-threshold escalation with signals that fired or would
+     have: failures (kept), plus targeted rules such as escalating intent for
+     short head terms, and re-measure on the recordings.
+   * One capped run of the strong tier on the same items, to learn whether
+     escalating more would fix the intent and relevance gaps or whether the
+     prompts are the issue.
+   * Make the review-opportunity support matcher use theme terms, not only
+     the theme label.
+   Then the first read-only live market-data adapter with the same
+   record/replay discipline.
+9. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.

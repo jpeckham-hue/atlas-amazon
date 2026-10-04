@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from atlas_amazon.evidence import make_evidence
+from atlas_amazon.jsonvalue import thaw
 from atlas_amazon.judgments import JudgmentRequest, JudgmentType, parse_judgment
 from atlas_amazon.providers import JudgmentProvider, ReviewThemeProvider
 from atlas_amazon.reviews import parse_review_theme
@@ -24,7 +25,7 @@ from atlas_amazon.semantic import (
     find_secrets,
     load_template,
 )
-from atlas_amazon.semantic.tiers import OPUS_STRONG, STRONG
+from atlas_amazon.semantic.tiers import DIRECT_OPUS_STRONG, FAST, STRONG
 from semantic_helpers import TS, constant, relevance, reply
 
 GOOD = {"score": 0.9, "confidence": 0.8, "rationale": "Names the product type and attribute."}
@@ -46,7 +47,8 @@ class TestRequests:
         judge(transport)
         [req] = transport.requests
         template = load_template("relevance")
-        assert req["model"] == "claude-haiku-4-5"
+        assert req["model"] == FAST.model == "anthropic/claude-haiku-4.5"
+        assert req["providerOptions"] == {"gateway": {"only": ["anthropic"]}}  # routing pinned
         assert req["max_tokens"] == template.max_tokens == 256
         assert req["system"] == template.system
         # Haiku 4.5 rejects `effort`; it is omitted, not defaulted.
@@ -59,11 +61,11 @@ class TestRequests:
 
     def test_opus_settings_add_effort_fallbacks_and_thinking_allowance(self):
         transport = constant(GOOD)
-        judge(transport, settings=OPUS_STRONG)
+        judge(transport, settings=DIRECT_OPUS_STRONG)
         [req] = transport.requests
         template = load_template("relevance")
-        assert req["model"] == "claude-opus-5-5"
-        assert req["max_tokens"] == template.max_tokens + OPUS_STRONG.thinking_allowance
+        assert req["model"] == "claude-opus-5-5" and "providerOptions" not in req
+        assert req["max_tokens"] == template.max_tokens + DIRECT_OPUS_STRONG.thinking_allowance
         assert req["output_config"]["effort"] == "low"
         assert req["betas"] == ["server-side-fallback-2026-07-01"]
         assert req["fallbacks"] == "default"
@@ -72,7 +74,7 @@ class TestRequests:
         transport = constant(GOOD)
         judge(transport, settings=STRONG)
         [req] = transport.requests
-        assert req["model"] == "claude-sonnet-5-5"
+        assert req["model"] == STRONG.model == "anthropic/claude-sonnet-5.5"
         assert req["thinking"] == {"type": "between_tools"}
         assert req["output_config"]["effort"] == "low"
         assert "fallbacks" not in req
@@ -110,7 +112,7 @@ class TestValidatedJudgments:
         assert j.judged_at == datetime.fromisoformat(TS)
         assert j.call["call_evidence_id"] == call.id
         assert j.call["usage"]["input_tokens"] == 300
-        assert j.call["requested_model"] == "claude-haiku-4-5"  # served != requested
+        assert j.call["requested_model"] == FAST.model  # served != requested
         # The original request and response are preserved for audit and replay.
         assert call.payload["request"]["system"] == load_template("relevance").system
         assert json.loads(call.payload["response"]["text"]) == GOOD
@@ -118,7 +120,7 @@ class TestValidatedJudgments:
         assert not find_secrets(call.payload) and not find_secrets(evidence.payload)
 
     def test_fallback_served_model_is_recorded(self):
-        _, out = judge(constant(GOOD, model="claude-opus-4-8"), settings=OPUS_STRONG)
+        _, out = judge(constant(GOOD, model="claude-opus-4-8"), settings=DIRECT_OPUS_STRONG)
         j = judgments_in(out)[0]
         assert j.model == "claude-opus-4-8"
         assert j.call["requested_model"] == "claude-opus-5-5"
@@ -326,7 +328,7 @@ class TestLiveSafety:
         transport = AnthropicTransport(
             client=client, allow_live=True, clock=lambda: datetime(2026, 10, 3, tzinfo=UTC)
         )
-        provider, out = judge(transport, settings=OPUS_STRONG)
+        provider, out = judge(transport, settings=DIRECT_OPUS_STRONG)
         assert len(client.beta.messages.calls) == 1  # fallbacks use the beta endpoint
         assert judgments_in(out)[0].call["usage"]["input_tokens"] == 321
         rec = provider.usage.records[0]
@@ -470,3 +472,106 @@ class TestReviewThemes:
         ]
         assert provider.usage.records[0].outcome == "malformed"
         assert LLMReviewThemeProvider(constant({"themes": []})).themes([], marketplace="US") == []
+
+
+class TestGatewayTransport:
+    """Vercel AI Gateway is the default live transport. No network here."""
+
+    class FakeAnthropic:
+        """Stands in for the `anthropic` module; records client construction."""
+
+        def __init__(self):
+            self.kwargs = None
+
+        def Anthropic(self, **kwargs):
+            self.kwargs = kwargs
+            return object()
+
+    def test_default_live_transport_is_the_gateway(self):
+        from atlas_amazon.semantic import GatewayTransport, default_live_transport
+
+        transport = default_live_transport(allow_live=False)
+        assert isinstance(transport, GatewayTransport) and transport.is_live
+        assert transport.name == "vercel-ai-gateway"
+        with pytest.raises(LiveCallsDisabled):
+            transport.send({"model": FAST.model})
+
+    def test_gateway_key_is_used_never_anthropic_key(self, monkeypatch):
+        from atlas_amazon.semantic import GatewayTransport
+        from atlas_amazon.semantic.transport import TransportError
+
+        monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
+        monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "direct-fake")
+        fake = self.FakeAnthropic()
+        with pytest.raises(TransportError, match="AI_GATEWAY_API_KEY"):
+            GatewayTransport()._make_client(fake)
+        monkeypatch.setenv("VERCEL_OIDC_TOKEN", "oidc-fake")
+        GatewayTransport()._make_client(fake)
+        assert fake.kwargs["api_key"] == "oidc-fake"
+        monkeypatch.setenv("AI_GATEWAY_API_KEY", "gw-fake")  # preferred
+        transport = GatewayTransport()
+        transport._make_client(fake)
+        assert fake.kwargs == {
+            "api_key": "gw-fake",
+            "base_url": "https://ai-gateway.vercel.sh",
+        }
+        assert "gw-fake" not in repr(vars(transport))  # never kept
+
+    def test_gateway_sends_routing_as_body_field_and_records_its_name(self):
+        from atlas_amazon.semantic import GatewayTransport
+
+        class Block:
+            type, text = "text", json.dumps(GOOD)
+
+        class Message:
+            id, model, stop_reason, content, usage = (
+                "msg_gw",
+                FAST.model,
+                "end_turn",
+                [Block()],
+                None,
+            )
+
+        class Endpoint:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **params):
+                self.calls.append(params)
+                return Message()
+
+        class Client:
+            def __init__(self):
+                self.messages = Endpoint()
+
+        client = Client()
+        transport = GatewayTransport(
+            client=client, allow_live=True, clock=lambda: datetime(2026, 10, 4, tzinfo=UTC)
+        )
+        _, out = judge(transport)
+        [params] = client.messages.calls
+        assert "providerOptions" not in params
+        assert params["extra_body"] == {"providerOptions": {"gateway": {"only": ["anthropic"]}}}
+        [call] = [e for e in out if e.kind == "semantic_call"]
+        assert call.payload["response"]["transport"] == "vercel-ai-gateway"
+        assert thaw(call.payload["request"]["providerOptions"]) == {
+            "gateway": {"only": ["anthropic"]}
+        }
+        j = judgments_in(out)[0]
+        assert j.model == "anthropic/claude-haiku-4.5"  # served model, provider-qualified
+
+    def test_direct_transport_refuses_gateway_routing(self):
+        from atlas_amazon.semantic.transport import TransportError
+
+        transport = AnthropicTransport(client=object(), allow_live=True)
+        with pytest.raises(TransportError, match="GatewayTransport"):
+            transport.send({"model": "claude-haiku-4-5", "providerOptions": {}})
+
+    def test_gateway_models_are_priced(self):
+        from atlas_amazon.semantic import PricingTable
+
+        table = PricingTable()
+        assert table.get("anthropic/claude-haiku-4.5") == table.get("claude-haiku-4-5")
+        assert table.get("anthropic/claude-sonnet-5.5") == table.get("claude-sonnet-5-5")
+        assert table.get("anthropic/claude-opus-5.5") == table.get("claude-opus-5-5")

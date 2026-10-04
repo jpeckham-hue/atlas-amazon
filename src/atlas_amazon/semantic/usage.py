@@ -333,3 +333,49 @@ def estimate_recording_cost(
         expected += price.cost(i, o)
         worst += price.cost(i, int(request.get("max_tokens", 0)))
     return CostEstimate(model or "as requested", len(records), inp, out, expected, worst)
+
+
+@dataclass(frozen=True, slots=True)
+class MeasuredCost:
+    """Cost of a *live* recording from the API-reported usage of each exchange."""
+
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_usd: float | None  # None if any served model is unpriced
+    by_model: Mapping[str, int]  # served model -> calls
+
+
+def measured_recording_cost(path, pricing: PricingTable | None = None) -> MeasuredCost:
+    """Measured cost of a live recording: reported tokens x list price of the served model.
+
+    Refuses synthetic recordings, whose token counts are estimates.
+    """
+    from atlas_amazon.semantic.records import ChecksummedJsonl
+
+    table = pricing or PricingTable()
+    totals = [0, 0, 0, 0]
+    cost: float | None = 0.0
+    by_model: dict[str, int] = {}
+    records = ChecksummedJsonl(path).read()
+    for record in records:
+        response = record["response"]
+        if response.get("synthetic"):
+            raise ValueError(f"{path}: synthetic responses have no measured cost")
+        usage = response.get("usage") or {}
+        counts = [
+            int(usage.get(k) or 0)
+            for k in (
+                "input_tokens",
+                "output_tokens",
+                "cache_read_input_tokens",
+                "cache_creation_input_tokens",
+            )
+        ]
+        totals = [a + b for a, b in zip(totals, counts, strict=True)]
+        by_model[response["model"]] = by_model.get(response["model"], 0) + 1
+        price = table.get(response["model"])
+        cost = None if price is None or cost is None else cost + price.cost(*counts)
+    return MeasuredCost(len(records), *totals, cost, dict(sorted(by_model.items())))

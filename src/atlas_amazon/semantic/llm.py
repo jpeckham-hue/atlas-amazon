@@ -97,6 +97,8 @@ def build_request(
     if settings.refusal_fallbacks:
         request["betas"] = [DEFAULT_FALLBACK_BETA]
         request["fallbacks"] = "default"
+    if settings.provider_options is not None:
+        request["providerOptions"] = thaw(settings.provider_options)
     ensure_no_secrets(request, "semantic request")
     return request
 
@@ -355,7 +357,7 @@ class LLMJudgmentProvider:
         name: str = "anthropic",
     ) -> None:
         self.name = name
-        self.settings = settings or LLMSettings()
+        self.settings = settings or FAST
         self.usage = ledger or UsageLedger()
         self.templates = {t.value: load_template(t.value) for t in JudgmentType}
         self._caller = _SemanticCaller(name, transport, self.settings, self.usage, cache)

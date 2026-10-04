@@ -1,7 +1,10 @@
 """Model pricing used for *estimated* semantic cost.
 
 The defaults are Anthropic first-party API list prices, as published in the
-Claude API reference cached on 2026-09-25 (USD per million tokens). Prices
+Claude API reference cached on 2026-09-25 (USD per million tokens), plus the
+same models under their Vercel AI Gateway IDs at the gateway catalog's
+prices (identical, checked 2026-10-04). A served model is priced by the ID
+the response reports. Prices
 change: pass your own `PricingTable` to override, and treat every cost
 figure as an estimate. A model missing from the table has unknown cost, and
 a configured cost limit then refuses to call it (fail safe).
@@ -40,9 +43,17 @@ class ModelPrice:
 
 DEFAULT_PRICES: Mapping[str, ModelPrice] = MappingProxyType(
     {
+        # Anthropic API model IDs (direct transport).
         "claude-opus-5-5": ModelPrice(4.00, 20.00, 0.20, 5.00),
         "claude-sonnet-5-5": ModelPrice(2.00, 10.00, 0.20, 2.50),
         "claude-haiku-4-5": ModelPrice(1.00, 5.00, 0.10, 1.25),
+        # Vercel AI Gateway model IDs (default transport), from the gateway's
+        # model catalog (GET https://ai-gateway.vercel.sh/v1/models, read
+        # 2026-10-04). They equal Anthropic's list prices; credit purchase
+        # fees are not included.
+        "anthropic/claude-opus-5.5": ModelPrice(4.00, 20.00, 0.20, 5.00),
+        "anthropic/claude-sonnet-5.5": ModelPrice(2.00, 10.00, 0.20, 2.50),
+        "anthropic/claude-haiku-4.5": ModelPrice(1.00, 5.00, 0.10, 1.25),
     }
 )
 

@@ -5,12 +5,23 @@ system, messages, output_config, ...). It never contains credentials. A
 `TransportResponse` is a normalized view of the reply, plus a raw dump for
 audit.
 
-* `AnthropicTransport`: **live**. It uses the official `anthropic` SDK
-  (optional dependency: `pip install atlas-amazon[llm]`), imported lazily.
-  Credentials come only from the environment or an `ant auth login`
-  profile; atlas never reads, stores or logs them. Live calls are disabled
-  unless `ATLAS_ALLOW_LIVE_LLM=1` is set or `allow_live=True` is passed, so
-  tests and CI can't call the network by accident.
+* `GatewayTransport`: **live, the default** (`default_live_transport()`).
+  Sends the same Messages API request through Vercel AI Gateway's
+  Anthropic-compatible endpoint (`https://ai-gateway.vercel.sh`) with the
+  official `anthropic` SDK. It authenticates with `AI_GATEWAY_API_KEY`
+  (or `VERCEL_OIDC_TOKEN`), never `ANTHROPIC_API_KEY`. The key is read
+  from the environment at client creation and passed to the SDK; it is
+  never stored on the transport, recorded or logged. A request's
+  `providerOptions` (gateway routing, e.g. pinning the provider) is sent as
+  a top-level body field and stays part of the recorded request.
+* `AnthropicTransport`: **live, optional**. Direct Anthropic API through the
+  official SDK; credentials resolved by the SDK (`ANTHROPIC_API_KEY` or an
+  `ant auth login` profile). It refuses gateway-only `providerOptions`.
+
+Both live transports need the optional dependency (`pip install
+atlas-amazon[llm]`), imported lazily, and are disabled unless
+`ATLAS_ALLOW_LIVE_LLM=1` is set or `allow_live=True` is passed, so tests and
+CI can't call the network by accident.
 * `ScriptedTransport`: deterministic responses from a Python function, for
   tests and synthetic recordings.
 * `RecordingTransport`: wraps a transport and appends every exchange to a
@@ -33,6 +44,8 @@ from atlas_amazon.jsonvalue import canonical_json, thaw
 from atlas_amazon.semantic.records import ChecksummedJsonl, ensure_no_secrets
 
 LIVE_ENV_FLAG = "ATLAS_ALLOW_LIVE_LLM"
+GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh"
+GATEWAY_KEY_ENV = ("AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN")  # first one set wins
 DEFAULT_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
@@ -110,12 +123,23 @@ class AnthropicTransport:
                 raise TransportError(
                     "install the 'llm' extra: pip install 'atlas-amazon[llm]'"
                 ) from exc
-            self._client = anthropic.Anthropic()  # credentials resolved by the SDK
+            self._client = self._make_client(anthropic)
         return self._client
+
+    def _make_client(self, anthropic: Any) -> Any:
+        return anthropic.Anthropic()  # credentials resolved by the SDK
+
+    def _params(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        params = thaw(request)
+        if "providerOptions" in params:
+            raise TransportError(
+                "providerOptions is a Vercel AI Gateway field; use GatewayTransport"
+            )
+        return params
 
     def send(self, request: Mapping[str, Any]) -> TransportResponse:
         client = self._ensure_client()
-        params = thaw(request)
+        params = self._params(request)
         if "betas" in params:
             message = client.beta.messages.create(**params)
         else:
@@ -144,6 +168,45 @@ class AnthropicTransport:
             responded_at=self._clock().isoformat(),
             transport=self.name,
         )
+
+
+class GatewayTransport(AnthropicTransport):
+    """Live calls through Vercel AI Gateway's Anthropic Messages API (the default)."""
+
+    name = "vercel-ai-gateway"
+
+    def __init__(
+        self,
+        *,
+        client: Any = None,
+        allow_live: bool | None = None,
+        clock: Callable[[], datetime] | None = None,
+        base_url: str = GATEWAY_BASE_URL,
+    ) -> None:
+        super().__init__(client=client, allow_live=allow_live, clock=clock)
+        self.base_url = base_url
+
+    def _make_client(self, anthropic: Any) -> Any:
+        key = next((os.environ[n] for n in GATEWAY_KEY_ENV if os.environ.get(n)), None)
+        if key is None:
+            raise TransportError(
+                f"no Vercel AI Gateway credential: set {GATEWAY_KEY_ENV[0]} "
+                f"(or {GATEWAY_KEY_ENV[1]})"
+            )
+        # Passed straight to the SDK client; never kept on this object or logged.
+        return anthropic.Anthropic(api_key=key, base_url=self.base_url)
+
+    def _params(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        params = thaw(request)
+        options = params.pop("providerOptions", None)
+        if options is not None:
+            params["extra_body"] = {"providerOptions": options}
+        return params
+
+
+def default_live_transport(**kwargs: Any) -> Transport:
+    """The default live transport: Vercel AI Gateway."""
+    return GatewayTransport(**kwargs)
 
 
 class ScriptedTransport:
