@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.7: semantic quality from first-party context.** `ResearchRun` answers
+> Status: **v0.8: relevance calibration and human-grounded review.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
 > for a book or a product listing, from fixture data, with every number
 > traced to evidence. Semantic judgments (relevance, intent, entity,
@@ -17,7 +17,17 @@ into its parts.
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
 >
-> New in v0.7: keyword judgments see the seller's own product context
+> New in v0.8 (offline, no live spend): relevance-risk signals (setting,
+> broad-category, generic and description-only terms) send over-rated
+> relevance to the strong tier; a review queue and decision file let a human
+> supersede stale fixture judgments without deleting any history; routing
+> strategies are compared offline from recorded answers (risk escalation
+> matched strong-for-all-relevance on quality at lower cost); review-theme
+> feature support no longer depends on exact wording. See
+> [docs/baselines/calibration_v0.8.md](docs/baselines/calibration_v0.8.md) and
+> [docs/reviews/judgment_review_v0.8.md](docs/reviews/judgment_review_v0.8.md).
+>
+> In v0.7: keyword judgments see the seller's own product context
 > (features, subtitle, description, category, brand), escalation is driven by
 > deterministic risk signals instead of model confidence, and an
 > evaluation-only mode asks the strong tier the same questions for

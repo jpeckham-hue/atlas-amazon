@@ -23,4 +23,4 @@ Relevance agreement means abs(score difference) <= 0.2.
 
 - **cozy mystery**: fixture judgments `{'label': 'commercial_investigation', 'score': 0.7}` vs replayed model `{'label': 'transactional', 'score': 0.8}`
   - fixture judgments: Genre browsing. (`ev_5ba3a4fc12ef42bbc77b7781`)
-  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_a4f1591083c09663ad4eae47`)
+  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_23a11b5e5721a26e579b1d87`)

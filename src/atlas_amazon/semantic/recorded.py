@@ -33,6 +33,7 @@ from atlas_amazon.judgments.contract import (
     judgment_evidence,
     parse_judgment,
 )
+from atlas_amazon.models import Evidence
 from atlas_amazon.semantic.batch import BatchItem, item_id, parse_batch_response
 from atlas_amazon.semantic.records import ChecksummedJsonl
 
@@ -48,6 +49,7 @@ class RecordedJudgment:
     judgment: Judgment
     requested_model: str
     exchange: int  # position of the exchange in the recording
+    evidence: Evidence
 
 
 def _items(request: dict) -> list[BatchItem] | None:
@@ -107,7 +109,9 @@ def recorded_judgments(
                     judged_at=datetime.fromisoformat(response["responded_at"]),
                     run_id=run_id,
                 )
-                out.append(RecordedJudgment(parse_judgment(evidence), request["model"], position))
+                out.append(
+                    RecordedJudgment(parse_judgment(evidence), request["model"], position, evidence)
+                )
             except (JudgmentError, KeyError, TypeError, ValueError):
                 continue
     return out

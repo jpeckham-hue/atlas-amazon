@@ -1,0 +1,46 @@
+{
+  "author": "claude (proposed assessment for human review; not a human decision)",
+  "basis": "v0.6 and v0.7 live recordings, v0.7 strong-tier comparison, first-party context",
+  "assessments": [
+    {
+      "scenario": "book_cozy_mystery", "type": "relevance", "subject": "harbor town",
+      "classification": "ambiguous", "proposed": {"score": 0.4},
+      "note": "The description now evidences a harbor setting (ferry dock, harbor festival), so the fixture's 'echoes the title' predates the context; but a setting phrase alone is a weak shopping query. The fast tier's 0.8 over-rates it; the strong tier's 0.45 is close to this proposal."
+    },
+    {
+      "scenario": "book_cozy_mystery", "type": "relevance", "subject": "small town",
+      "classification": "model_error", "proposed": null,
+      "note": "A setting phrase with no product type; the fixture's 0.3 still holds. The fast tier over-rated it (0.7) once it saw the richer context; the strong tier (0.35) agrees with the fixture."
+    },
+    {
+      "scenario": "book_cozy_mystery", "type": "relevance", "subject": "mystery books",
+      "classification": "model_error", "proposed": null,
+      "note": "Broad parent category; the fixture's 0.6 holds. The fast tier's 0.8 over-rates it; the strong tier's 0.75 is within tolerance."
+    },
+    {
+      "scenario": "book_cozy_mystery", "type": "relevance", "subject": "amateur sleuth",
+      "classification": "ambiguous", "proposed": null,
+      "note": "The description now supports the fixture (a bakery owner investigating). The strong tier's 0.6 treats it as a generic trope; the fixture's 0.8 is defensible. Keep the fixture."
+    },
+    {
+      "scenario": "book_cozy_mystery", "type": "intent", "subject": "small town mystery",
+      "classification": "model_error", "proposed": null,
+      "note": "Subgenre browsing, as the fixture says. The fast tier still labels it transactional; the strong tier agrees with the fixture."
+    },
+    {
+      "scenario": "book_cozy_mystery", "type": "intent", "subject": "cozy mystery books",
+      "classification": "ambiguous", "proposed": null,
+      "note": "Genre plus format reads as either ready to buy (fixture, fast tier) or still browsing (strong tier)."
+    },
+    {
+      "scenario": "physical_water_bottle", "type": "intent", "subject": "bottle water",
+      "classification": "model_error", "proposed": null,
+      "note": "A shopper typing 'bottle water' wants to buy bottled water: transactional intent, for a different product. Both tiers conflated 'not this product' with informational intent; relevance (low) is where that belongs."
+    },
+    {
+      "scenario": "physical_water_bottle", "type": "relevance", "subject": "stainless steel",
+      "classification": "stale_reference", "proposed": {"score": 0.65},
+      "note": "The listing description states the bottle is stainless steel, which the fixture's 'material match' predates. The keyword is still generic without a product type, so mid-high rather than high; the strong tier's 0.65 matches."
+    }
+  ]
+}

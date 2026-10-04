@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -121,7 +121,8 @@ class _Triage:
     fast_cached: dict[str, dict[str, Any]] = field(default_factory=dict)
     certain: dict[str, tuple[dict[str, Any], EscalationReason, str]] = field(default_factory=dict)
     over_cap: list[str] = field(default_factory=list)
-    live: list[BatchItem] = field(default_factory=list)
+    live: list[BatchItem] = field(default_factory=list)  # primary tier
+    live_strong: list[BatchItem] = field(default_factory=list)  # strong_types, straight to strong
 
 
 class _Halt(Exception):
@@ -156,6 +157,7 @@ class BatchedJudgmentProvider:
         cache: SemanticCache | None = None,
         name: str = "anthropic",
         evaluation: str | None = None,
+        strong_types: Collection[JudgmentType | str] = (),
     ) -> None:
         """`evaluation="strong_only"` is a benchmarking mode, never a production path:
         every item goes to the strong tier, nothing escalates, and the provider
@@ -165,6 +167,9 @@ class BatchedJudgmentProvider:
         """
         if evaluation not in (None, STRONG_ONLY):
             raise ValueError(f"unknown evaluation mode {evaluation!r}")
+        # Judgment types answered by the strong tier from the start (for example
+        # relevance only); every other type stays on the fast tier with escalation.
+        self.strong_types = frozenset(JudgmentType(t) for t in strong_types)
         self.name = name
         self.transport = transport
         self.tiers = tiers or ModelTiers()
@@ -235,6 +240,9 @@ class BatchedJudgmentProvider:
             if strong is not None:
                 t.strong_cached[item.id] = strong
                 continue
+            if item.request.type in self.strong_types and not self.evaluation_only:
+                t.live_strong.append(item)
+                continue
             fast = self._cached(self.primary, item)
             if fast is None:
                 t.live.append(item)
@@ -278,7 +286,7 @@ class BatchedJudgmentProvider:
         by_id = {i.id: i for i in t.items}
         fast_calls = tuple(
             self._planned(self.primary, g, exact=True) for g in self._batches(t.live)
-        )
+        ) + tuple(self._planned(STRONG, g, exact=True) for g in self._batches(t.live_strong))
         certain_items = [by_id[i] for i in t.certain]
         certain_calls = tuple(
             self._planned(STRONG, g, exact=True) for g in self._batches(certain_items)
@@ -327,7 +335,7 @@ class BatchedJudgmentProvider:
             provider=self.name,
             requested=len(t.items),
             cache_hits=len(t.strong_cached) + len(t.fast_cached) + len(t.certain),
-            live=len(t.live),
+            live=len(t.live) + len(t.live_strong),
             batches=fast_calls,
             escalations=certain_calls,
             escalation_reserve=reserve,
@@ -713,6 +721,12 @@ class BatchedJudgmentProvider:
                         self.primary, group, marketplace=marketplace, run_id=run_id, calls=calls
                     )
                 )
+            for group in self._batches(triage.live_strong):
+                for iid, result in self._run_batch(
+                    STRONG, group, marketplace=marketplace, run_id=run_id, calls=calls
+                ).items():
+                    if result.status == b.OK:
+                        final[iid] = result
         except _Halt:
             halted = True
 

@@ -1,6 +1,6 @@
 # Research report: Acme Insulated Water Bottle 32 oz
 
-- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.7.0)
+- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.8.0)
 - Recipe: `physical-product` 0.2.0 (amazon-base > physical-product), marketplace US
 - Seeds (seed_keywords attribute): water bottle, insulated water bottle
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=none

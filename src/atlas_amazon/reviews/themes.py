@@ -20,10 +20,20 @@ product**:
 
 * positives / complaints: themes with count >= min_count, by polarity;
 * opportunities: repeated competitor complaints and praise, phrased
-  conditionally ("if your product ..."). A feature counts as first-party
-  support only when one of the theme's terms appears in
-  `ProductInput.attributes["features"]`, and the opportunity then cites
-  that input verbatim.
+  conditionally ("if your product ..."). First-party support is always a
+  verbatim entry of `ProductInput.attributes["features"]`; nothing else is
+  ever cited as a product fact. A feature supports a theme when (v0.8):
+
+  1. one of the theme's terms appears in it as a phrase; or
+  2. it shares at least `MIN_SHARED_WORDS` distinctive words with the theme's
+     label and terms; or
+  3. it shares one such word, plus one more word that recurs across the
+     theme's supporting reviews (in at least two of them).
+
+  "Distinctive" excludes connecting words, generic filler and the words of
+  the product's own title (which describe the product type, not a feature),
+  so "keeps contents cold for long periods" relates to "Double wall vacuum
+  insulation keeps drinks cold for 24 hours" without exact wording.
 """
 
 from __future__ import annotations
@@ -33,6 +43,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from atlas_amazon.evidence.identity import make_evidence
+from atlas_amazon.keywords.candidates import EDGE_STOPWORDS
 from atlas_amazon.keywords.coverage import contains_phrase
 from atlas_amazon.keywords.normalize import fold_plural, keyword_key, tokenize
 from atlas_amazon.models import Evidence, EvidenceKind, ProductInput
@@ -207,11 +218,76 @@ def _features(product: ProductInput) -> tuple[str, ...]:
     return tuple(f for f in raw if isinstance(f, str) and f.strip())
 
 
-def _supporting_features(theme: ReviewTheme, features: Sequence[str]) -> tuple[str, ...]:
+MIN_SHARED_WORDS = 2
+GENERIC_WORDS = frozenset(
+    {
+        "no",
+        "not",
+        "very",
+        "really",
+        "great",
+        "good",
+        "nice",
+        "love",
+        "all",
+        "most",
+        "long",
+        "product",
+        "item",
+        "one",
+        "it",
+        "is",
+        "are",
+        "was",
+        "be",
+        "this",
+        "that",
+        "they",
+    }
+)
+
+
+def _words(text: str, ignore: frozenset[str]) -> set[str]:
+    return {
+        fold_plural(t)
+        for t in tokenize(text)
+        if t not in EDGE_STOPWORDS and t not in GENERIC_WORDS and fold_plural(t) not in ignore
+    }
+
+
+def _recurring_review_words(
+    theme: ReviewTheme, reviews: Mapping[str, Evidence], ignore: frozenset[str]
+) -> set[str]:
+    counts: dict[str, int] = {}
+    for rid in theme.review_evidence_ids:
+        review = reviews.get(rid)
+        text = review.payload.get("text") if review is not None else None
+        if isinstance(text, str):
+            for word in _words(text, ignore):
+                counts[word] = counts.get(word, 0) + 1
+    return {w for w, n in counts.items() if n >= 2}
+
+
+def _supporting_features(
+    theme: ReviewTheme,
+    features: Sequence[str],
+    *,
+    title_words: frozenset[str] = frozenset(),
+    reviews: Mapping[str, Evidence] | None = None,
+) -> tuple[str, ...]:
+    theme_words = _words(" ".join((theme.theme, *theme.terms)), title_words)
+    review_words = (
+        _recurring_review_words(theme, reviews, title_words) - theme_words if reviews else set()
+    )
     found = []
     for feature in features:
         folded = [fold_plural(t) for t in tokenize(feature)]
         if any(contains_phrase(folded, keyword_key(term)) for term in theme.terms):
+            found.append(feature)
+            continue
+        feature_words = _words(feature, title_words)
+        shared = feature_words & theme_words
+        if len(shared) >= MIN_SHARED_WORDS or (shared and feature_words & review_words):
             found.append(feature)
     return tuple(found)
 
@@ -249,6 +325,7 @@ def summarize_review_themes(
     other = tuple(i for i in order if i not in positives and i not in complaints)
 
     features = _features(product)
+    title_words = frozenset(fold_plural(t) for t in tokenize(product.title))
     opportunities = []
     for insight, basis in [(i, "competitor_complaint") for i in complaints] + [
         (i, "competitor_praise") for i in positives
@@ -269,7 +346,7 @@ def summarize_review_themes(
                 f"({t.count} reviews). If the product offers this, make sure the listing "
                 f"says so."
             )
-        support = _supporting_features(t, features)
+        support = _supporting_features(t, features, title_words=title_words, reviews=by_id)
         if support:
             statement += f" ProductInput lists related feature(s): {'; '.join(support)}."
         opportunities.append(

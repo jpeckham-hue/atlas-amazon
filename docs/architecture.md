@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.7), `·` = planned.
+`✓` = exists (v0.8), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,7 +59,8 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
-│   ├── baselines/                 ✓ live semantic baselines (v0.6 frozen, v0.7 golden)
+│   ├── baselines/                 ✓ live baselines (v0.6 frozen, v0.7) and v0.8 calibration
+│   ├── reviews/                   ✓ human review queue for disputed reference judgments
 │   ├── benchmarks/                ✓ semantic cost benchmark (v0.4b vs v0.5), golden
 │   ├── examples/                  ✓ golden example research reports
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
@@ -118,6 +119,8 @@ atlas-amazon/
 │   │   ├── benchmark.py           ✓ v0.4b vs v0.5 comparison from recordings
 │   │   ├── comparison.py          ✓ strong-tier comparison (evaluation only)
 │   │   ├── recorded.py            ✓ judgments re-validated from old recordings
+│   │   ├── review.py              ✓ human review decisions superseding references
+│   │   ├── strategies.py          ✓ offline routing-strategy simulation and pricing
 │   │   ├── llm.py                 ✓ LLMJudgmentProvider (one call each), LLMReviewThemeProvider
 │   │   ├── transport.py           ✓ Anthropic (live) / Recording / Replay / Scripted
 │   │   ├── cache.py               ✓ persistent semantic cache
@@ -1103,6 +1106,63 @@ tier: 6 of 29), and the head terms "cozy mystery", "mystery books" and
 * Single runs cannot separate prompt effects from run-to-run variation;
   the report labels those changes as such.
 
+## Relevance calibration and human-grounded review (v0.8)
+
+All offline; no live calls were made in v0.8.
+
+### Relevance-risk signals (`semantic/escalation.py`)
+
+Richer context made the fast tier over-rate terms that merely appear in the
+product text. For relevance >= 0.7, `relevance_risks` checks whether the
+keyword is a `setting_term` (head noun is a setting: "small town", "harbor
+town"), a `broad_category` (short phrase headed by a category noun:
+"mystery books"), a `generic_head_term` (strictly broader than a seed), or
+has `incidental_description_support` (supported only by the description:
+"stainless steel"). A hit escalates to the strong tier with every applicable
+reason recorded; scores are never lowered by formula. A score below the
+lexical baseline no longer counts as `lexical_disagreement` for such risky
+terms, so the baseline cannot push setting terms back up.
+
+### Human review (`semantic/review.py`)
+
+`docs/reviews/judgment_review_v0.8.md` lists every open fixture/live
+disagreement with the first-party context, all judgments (fixture, v0.6,
+v0.7 fast, production and strong) and all rationales, plus Claude's
+classification (model error, stale reference, ambiguous) and proposal,
+clearly marked as not a decision. A reviewer records decisions in
+`tests/fixtures/reviews/v08_human_decisions.json`; `load_review_decisions`
+turns them into ordinary `human` judgment Evidence and `supersede` makes them
+the evaluation reference. Fixture and model judgments are never edited or
+deleted.
+
+### Routing strategies, compared offline (`semantic/strategies.py`)
+
+`simulate_strategy` replays recorded fast answers and recorded strong answers
+under a routing strategy; `PrecomputedJudgmentProvider` feeds the result to a
+real `ResearchRun` for downstream effects; `strategy_cost` prices it with the
+planner. `BatchedJudgmentProvider(strong_types={RELEVANCE})` implements the
+strong-for-relevance strategy for real use.
+
+| | book relevance (fixture / proposed) | product relevance (fixture / proposed) | strong items | expected / worst cost (judgment stages) |
+|---|---|---|---|---|
+| v0.7 production | 8/11 / 8/11 | 11/12 / 12/12 | 4 | measured in v0.7 |
+| A: risk escalation (v0.8 signals) | 10/11 / 11/11 | 12/12 / 12/12 | 7 | $0.0522 / $0.1543 |
+| B: strong tier for all relevance | 10/11 / 11/11 | 12/12 / 12/12 | 28 | $0.0557 / $0.1837 |
+
+Intent, entity and equivalence agreement are identical across strategies.
+Strategy A drops "small town" and "harbor town" from the book's
+recommendations (the v0.7 failure mode) and leaves the product's unchanged;
+strategy B also reorders the product's recommendations. Strategy A is the
+default.
+
+### Review-theme feature support (`reviews/themes.py`)
+
+A seller feature supports a theme when a theme term appears in it as a
+phrase, when it shares two distinctive words with the theme label and terms
+(the product's own title words do not count), or one such word plus a word
+recurring across the theme's supporting reviews. Support is still always a
+verbatim seller feature; review words alone never create it.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -1134,23 +1194,20 @@ tier: 6 of 29), and the head terms "cozy mystery", "mystery books" and
    default live transport (`AI_GATEWAY_API_KEY`), one capped live run per
    scenario, real recordings replayed offline in CI, measured cost and
    per-type agreement.
-8. **v0.7 (this release)**: first-party product context for judgments,
+8. **v0.7**: first-party product context for judgments,
    risk-signal escalation, an evaluation-only strong-tier comparison, and a
    live re-measurement ($0.1317).
-9. **v0.8 (recommended)**: close the remaining relevance gap, then start market
-   data.
-   * Route **relevance only** to the strong tier in production (it agreed on
-     21/23 relevance comparisons vs 19/23 for the fast tier, at about $0.001
-     per strong-tier judgment, a few cents per product), or add a
-     risk signal for generic or setting terms rated highly with richer
-     context. Measure both on the recordings before choosing.
-   * Review the fixture judgments themselves against the richer context
-     (some, like "stainless steel" and "harbor town", predate the description
-     being visible) and record decisions as human judgments.
-   * Make review-opportunity support use theme terms, not only the label.
-   * Then the first read-only live market-data adapter (autocomplete or
-     SP-API Catalog) with the same plan / cap / record / replay discipline.
-10. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+9. **v0.8 (this release)**: relevance-risk escalation, a human review queue
+   with decisions that supersede stale fixtures, offline routing-strategy
+   comparison, and wording-independent review-theme feature support. No live
+   spend.
+10. **v0.9 (recommended)**: record the human review decisions, then start market
+    data. Re-evaluate against the human reference (the reports pick decisions
+    up automatically); run one capped confirmatory live pass of strategy A only
+    if a decision changes the picture. Then the first read-only live
+    market-data adapter (autocomplete or SP-API Catalog) with the same
+    plan / cap / record / replay discipline.
+11. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.

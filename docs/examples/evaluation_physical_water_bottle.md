@@ -23,4 +23,4 @@ Relevance agreement means abs(score difference) <= 0.2.
 
 - **water bottle**: fixture judgments `{'label': 'commercial_investigation', 'score': 0.6}` vs replayed model `{'label': 'transactional', 'score': 0.75}`
   - fixture judgments: Broad browsing query. (`ev_9ddbd0e3d144ff971d1f960d`)
-  - replayed model: Most shoppers searching this phrase buy within the session. (`ev_1b9608c22e738c81bbf76414`)
+  - replayed model: Most shoppers searching this phrase buy within the session. (`ev_41547904ea4ae0eab3ff9d2d`)

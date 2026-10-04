@@ -2,12 +2,12 @@
 
 # Research report: Acme Insulated Water Bottle 32 oz
 
-- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.7.0)
+- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.8.0)
 - Recipe: `physical-product` 0.2.0 (amazon-base > physical-product), marketplace US
 - Seeds (seed_keywords attribute): water bottle, insulated water bottle
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=anthropic, judgments=anthropic, human_judgments=none
 - Keyword families: on
-- Evidence fingerprint: `792a9e162cc4f792`
+- Evidence fingerprint: `7380af0d6fdbf79b`
 
 ## Research tasks
 
@@ -88,7 +88,7 @@ Intent label (judgment): transactional
 | relevance | judgment | 0.850 | 0.850 | 0.35 | 0.297 | `ev_ed2a5cf40290832ae41a02cb` | judgment ev_ed2a5cf40290832ae41a02cb: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.9: The product type, unqualified. |
 | demand | evidence | 1.000 | 1.000 | 0.25 | 0.250 | `ev_99b58c87b8aa6bfb925f1ea3` | log1p(450000) / log1p(450000) from ['ev_99b58c87b8aa6bfb925f1ea3'] |
 | competition | evidence | 0.950 | 0.050 | 0.15 | 0.008 | `ev_99b58c87b8aa6bfb925f1ea3` | competition 0.950 from ['ev_99b58c87b8aa6bfb925f1ea3'], scored as 1 - value |
-| intent | judgment | 0.750 | 0.750 | 0.15 | 0.112 | `ev_1b9608c22e738c81bbf76414` | judgment ev_1b9608c22e738c81bbf76414: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Most shoppers searching this phrase buy within the session. |
+| intent | judgment | 0.750 | 0.750 | 0.15 | 0.112 | `ev_41547904ea4ae0eab3ff9d2d` | judgment ev_41547904ea4ae0eab3ff9d2d: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Most shoppers searching this phrase buy within the session. |
 | competitor_coverage | evidence | 1.000 | 1.000 | 0.10 | 0.100 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 3/3 competitor listings contain the phrase |
 
 ### 3. leak proof: 0.715
@@ -145,7 +145,7 @@ Intent label (judgment): commercial_investigation
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.500 | 0.500 | 0.35 | 0.175 | `ev_b110d8d1013665aad8f72d07` | judgment ev_b110d8d1013665aad8f72d07: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
+| relevance | judgment | 0.500 | 0.500 | 0.35 | 0.175 | `ev_f4354a4bbf6b1375ed5f7338` | judgment ev_f4354a4bbf6b1375ed5f7338: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
 | demand | evidence | 0.637 | 0.637 | 0.25 | 0.159 | `ev_ef542322b00eac38e76bd170` | log1p(4000) / log1p(450000) from ['ev_ef542322b00eac38e76bd170'] |
 | competition | evidence | 0.250 | 0.750 | 0.15 | 0.112 | `ev_ef542322b00eac38e76bd170` | competition 0.250 from ['ev_ef542322b00eac38e76bd170'], scored as 1 - value |
 | intent | judgment | 0.500 | 0.500 | 0.15 | 0.075 | `ev_0482c1e89ed7913b6259eda5` | judgment ev_0482c1e89ed7913b6259eda5: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
@@ -157,7 +157,7 @@ Intent label (judgment): commercial_investigation
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.550 | 0.550 | 0.35 | 0.193 | `ev_336748da3b14f0413b393e64` | judgment ev_336748da3b14f0413b393e64: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.7: Material match, but very generic. |
+| relevance | judgment | 0.550 | 0.550 | 0.35 | 0.193 | `ev_14beed81d4a6cbe7525492f9` | judgment ev_14beed81d4a6cbe7525492f9: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.7: Material match, but very generic. |
 | demand | evidence | 0.938 | 0.938 | 0.25 | 0.234 | `ev_dd4002c0e8a657153adc2858` | log1p(200000) / log1p(450000) from ['ev_dd4002c0e8a657153adc2858'] |
 | competition | evidence | 0.900 | 0.100 | 0.15 | 0.015 | `ev_dd4002c0e8a657153adc2858` | competition 0.900 from ['ev_dd4002c0e8a657153adc2858'], scored as 1 - value |
 | intent | judgment | 0.500 | 0.500 | 0.15 | 0.075 | `ev_828ad330de891f1b922a8ad9` | judgment ev_828ad330de891f1b922a8ad9: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
@@ -169,7 +169,7 @@ Intent label (judgment): commercial_investigation
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.500 | 0.500 | 0.35 | 0.175 | `ev_d77edef3de297731a51d2ebb` | judgment ev_d77edef3de297731a51d2ebb: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
+| relevance | judgment | 0.500 | 0.500 | 0.35 | 0.175 | `ev_0b562fcbddd76035234409ee` | judgment ev_0b562fcbddd76035234409ee: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
 | demand | evidence | 0.562 | 0.562 | 0.25 | 0.140 | `ev_0e00bac0c3e1419e9571ec44` | log1p(1500) / log1p(450000) from ['ev_0e00bac0c3e1419e9571ec44'] |
 | competition | evidence | 0.200 | 0.800 | 0.15 | 0.120 | `ev_0e00bac0c3e1419e9571ec44` | competition 0.200 from ['ev_0e00bac0c3e1419e9571ec44'], scored as 1 - value |
 | intent | judgment | 0.500 | 0.500 | 0.15 | 0.075 | `ev_0f603b516283169295453e26` | judgment ev_0f603b516283169295453e26: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.6: Synthetic default: no scripted answer. |
@@ -255,10 +255,10 @@ Intent label (judgment): transactional
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.050 | 0.050 | 0.35 | 0.017 | `ev_bbf3855bc4530c49e245e925` | judgment ev_bbf3855bc4530c49e245e925: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.95: Bottled drinking water, not a container. |
+| relevance | judgment | 0.050 | 0.050 | 0.35 | 0.017 | `ev_041a4731a345d01552ceb37e` | judgment ev_041a4731a345d01552ceb37e: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.95: Bottled drinking water, not a container. |
 | demand | evidence | 0.857 | 0.857 | 0.25 | 0.214 | `ev_b0f86f3f003846b0a5944e1b` | log1p(70000) / log1p(450000) from ['ev_b0f86f3f003846b0a5944e1b'] |
 | competition | evidence | 0.900 | 0.100 | 0.15 | 0.015 | `ev_b0f86f3f003846b0a5944e1b` | competition 0.900 from ['ev_b0f86f3f003846b0a5944e1b'], scored as 1 - value |
-| intent | judgment | 0.800 | 0.800 | 0.15 | 0.120 | `ev_0ce59157841c0cc8c0a18b24` | judgment ev_0ce59157841c0cc8c0a18b24: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.8: Buying bottled water. |
+| intent | judgment | 0.800 | 0.800 | 0.15 | 0.120 | `ev_032154fa52138d9dbf280212` | judgment ev_032154fa52138d9dbf280212: synthetic-scripted-v1 / judgment_batch-v2, confidence 0.8: Buying bottled water. |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5` (+1 more) | 0/3 competitor listings contain the phrase |
 
 ## Unscored keywords (missing evidence)
@@ -274,7 +274,7 @@ Intent label (judgment): transactional
 
 ## Semantic usage
 
-6 API calls (0 live, 6 replayed; 3 fast tier, 3 strong tier, 7 items escalated) supplied 48 model judgments. Answered without a model call: 0 cache hits, 0 human, 5 deterministic; 6 not needed.
+6 API calls (0 live, 6 replayed; 3 fast tier, 3 strong tier, 6 items escalated) supplied 48 model judgments. Answered without a model call: 0 cache hits, 0 human, 5 deterministic; 6 not needed.
 
 Planned: expected $0.0302 ($0.0006 per judgment), worst case $0.0977 (estimates from the call plans, pricing as of 2026-09-25).
 Measured cost: none (no live calls in this run).
@@ -282,7 +282,7 @@ Limits: max live calls none, max cost none.
 
 | Provider / model | Records | Live | Replayed | Fast / strong calls | Judgments | Cache hits | Input tok | Output tok | Est. cost | Failures |
 |---|---|---|---|---|---|---|---|---|---|---|
-| anthropic / synthetic-scripted-v1 | 6 | 0 | 6 | 3 / 3 | 55 | 0 | 10360 | 2488 | - | none |
+| anthropic / synthetic-scripted-v1 | 6 | 0 | 6 | 3 / 3 | 54 | 0 | 10323 | 2449 | - | none |
 
 ### Semantic call plan
 
@@ -327,17 +327,17 @@ Other themes (not repeated, or mixed/neutral): heavy (negative, 1)
 
 ## Recommendations
 
-- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_18914a9e533dc1f8876d6207`. Evidence: `ev_2013ce098a14499ee7894ae0`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_efdc0664596073b49499e1de` (+3 more)
+- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_a4e84aea6a240ff89c01ad0f`. Evidence: `ev_2013ce098a14499ee7894ae0`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_efdc0664596073b49499e1de` (+3 more)
 - **placement_upgrade** `leak proof`: Ranked #3 (score 0.715) but found only in bullets (placement 0.60). Consider: title, item_highlights. Evidence: `ev_6816784cac732b0b6b60b11f`, `ev_fad466f336253d1d8ca2237d`, `ev_b2abb29579151a4d79c8fa4a`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `double wall vacuum`: Ranked #4 (score 0.695) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_18914a9e533dc1f8876d6207`. Evidence: `ev_1e66b1b785aac3333b036470`, `ev_9d5250bbe438bc5c61e9a908`, `ev_bf49745f6e396cace68d7912`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `straw lid`: Ranked #6 (score 0.599) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_18914a9e533dc1f8876d6207`. Evidence: `ev_f2e89599f4651757e184b5b2`, `ev_bbc9eb0091469ac753904ecd`, `ev_6f9a4676225fe4a64058d7e9`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `double wall`: Ranked #7 (score 0.588) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_b110d8d1013665aad8f72d07`, `ev_ef542322b00eac38e76bd170`, `ev_0482c1e89ed7913b6259eda5`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `vacuum insulation`: Ranked #9 (score 0.577) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_18914a9e533dc1f8876d6207`. Evidence: `ev_d77edef3de297731a51d2ebb`, `ev_0e00bac0c3e1419e9571ec44`, `ev_0f603b516283169295453e26`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `bpa free`: Ranked #10 (score 0.569) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_18914a9e533dc1f8876d6207`. Evidence: `ev_535ba13968e5e8658da8b608`, `ev_b7056b1e3800ee4bf7ec6a63`, `ev_b9f817191e0ea81e66394272`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `double wall vacuum`: Ranked #4 (score 0.695) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_a4e84aea6a240ff89c01ad0f`. Evidence: `ev_1e66b1b785aac3333b036470`, `ev_9d5250bbe438bc5c61e9a908`, `ev_bf49745f6e396cace68d7912`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `straw lid`: Ranked #6 (score 0.599) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_a4e84aea6a240ff89c01ad0f`. Evidence: `ev_f2e89599f4651757e184b5b2`, `ev_bbc9eb0091469ac753904ecd`, `ev_6f9a4676225fe4a64058d7e9`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `double wall`: Ranked #7 (score 0.588) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_f4354a4bbf6b1375ed5f7338`, `ev_ef542322b00eac38e76bd170`, `ev_0482c1e89ed7913b6259eda5`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `vacuum insulation`: Ranked #9 (score 0.577) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_a4e84aea6a240ff89c01ad0f`. Evidence: `ev_0b562fcbddd76035234409ee`, `ev_0e00bac0c3e1419e9571ec44`, `ev_0f603b516283169295453e26`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `bpa free`: Ranked #10 (score 0.569) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_a4e84aea6a240ff89c01ad0f`. Evidence: `ev_535ba13968e5e8658da8b608`, `ev_b7056b1e3800ee4bf7ec6a63`, `ev_b9f817191e0ea81e66394272`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
 
 ## Proposals
 
-### `prop_18914a9e533dc1f8876d6207`: search_terms (evidence)
+### `prop_a4e84aea6a240ff89c01ad0f`: search_terms (evidence)
 
 Packs 6 of 16 ranked keywords, best first, into search_terms (76/249 bytes). Excluded: 7 duplicate, 1 entity_flag, 25 in_visible_listing, 3 stopword. Skips 2 redundant family member(s) sharing their canonical's words: water bottle insulated, kids water bottle. Retains current unscored content: flask, gym, hiking.
 

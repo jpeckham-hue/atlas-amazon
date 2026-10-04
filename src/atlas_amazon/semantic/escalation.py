@@ -13,7 +13,8 @@ records the exact reason in `call.escalation`.
   feature, subtitle or description, yet relevance < `feature_min_relevance`.
 * `lexical_disagreement`: relevance differs by >= `lexical_threshold` from
   the feature-aware lexical baseline (the share of the keyword's words found
-  in the product's first-party text).
+  in the product's first-party text). A score *below* the baseline does not
+  count for keywords with a relevance risk (below): low is expected there.
 * `intent_structure`: `transactional` for a generic head term (<= 2 words,
   all from the title, seeds or category) or for a bare attribute ("leak
   proof", "bpa free").
@@ -24,6 +25,24 @@ records the exact reason in `call.escalation`.
   "bottle water" vs "water bottle").
 * `low_confidence_with_risk`: confidence < `low_confidence` **and** a weaker
   lexical gap (>= `weak_lexical_gap`). Low confidence alone never escalates.
+
+Relevance-risk signals (v0.8), checked only when relevance >=
+`relevance_risk_min`. Richer context made the fast tier over-rate terms that
+merely appear in the product text; these send such scores for a second
+opinion (they never lower a score themselves). Every applicable reason is
+listed in the detail; the first one is the recorded reason.
+
+* `setting_term`: the keyword's head noun is a setting ("small town",
+  "harbor town", "beach"), not the product.
+* `broad_category`: a short keyword whose head is a broad category noun
+  ("mystery books", "bottles") and which is not one of the seller's seeds.
+* `generic_head_term`: the keyword is strictly broader than a seed: all its
+  words come from a seed (plus the category word) but it drops part of the
+  seed ("mystery books" vs "cozy mystery", "small town" vs "small town
+  mystery").
+* `incidental_description_support`: every supporting word comes from the
+  listing description alone, none from the title, subtitle, features, seeds,
+  brand or author.
 
 Recipe entities (for example KDP program names) never reach the model: the
 deterministic rules answer them first, so they cannot conflict.
@@ -53,6 +72,61 @@ from atlas_amazon.semantic import batch
 CONNECTORS = frozenset({"for", "with", "of", "in", "to", "on"})
 
 
+SETTING_WORDS = frozenset(
+    {
+        "town",
+        "city",
+        "village",
+        "harbor",
+        "harbour",
+        "island",
+        "beach",
+        "coast",
+        "county",
+        "valley",
+        "lake",
+        "seaside",
+        "countryside",
+        "farm",
+        "castle",
+        "manor",
+        "ranch",
+        "neighborhood",
+        "suburb",
+        "kitchen",
+        "office",
+        "gym",
+        "outdoors",
+        "camping",
+        "travel",
+        "school",
+        "home",
+    }
+)
+BROAD_CATEGORY_WORDS = frozenset(
+    {
+        "book",
+        "novel",
+        "fiction",
+        "ebook",
+        "story",
+        "read",
+        "product",
+        "gift",
+        "accessory",
+        "supply",
+        "gear",
+        "item",
+        "bottle",
+        "cup",
+        "mug",
+        "container",
+        "drinkware",
+        "kitchenware",
+    }
+)
+
+
 class EscalationReason(StrEnum):
     FAILED = "failed"
     FEATURE_UNDERRATED = "feature_underrated"
@@ -61,6 +135,10 @@ class EscalationReason(StrEnum):
     ENTITY_CONFLICT = "entity_conflict"
     EQUIVALENCE_CONFLICT = "equivalence_conflict"
     LOW_CONFIDENCE_WITH_RISK = "low_confidence_with_risk"
+    SETTING_TERM = "setting_term"
+    BROAD_CATEGORY = "broad_category"
+    GENERIC_HEAD_TERM = "generic_head_term"
+    INCIDENTAL_DESCRIPTION_SUPPORT = "incidental_description_support"
 
 
 # Item outcomes that mean the model answered badly (worth a second opinion).
@@ -140,6 +218,52 @@ def _structure(keyword: str, context: Mapping[str, Any]) -> str | None:
     return None
 
 
+def relevance_risks(keyword: str, context: Mapping[str, Any]) -> list[tuple[EscalationReason, str]]:
+    """Deterministic reasons a high relevance score for `keyword` deserves review."""
+    risks: list[tuple[EscalationReason, str]] = []
+    words = _content(keyword)
+    if not words:
+        return risks
+    head = head_noun(keyword)
+    seeds = [str(s) for s in context.get("seeds", ())]
+    category_text = str(context.get("category", "")).replace("-", " ")
+    category = {fold_plural(t) for t in tokenize(category_text)}
+    is_seed = any(keyword_key(keyword) == keyword_key(s) for s in seeds)
+    if head in SETTING_WORDS:
+        risks.append((EscalationReason.SETTING_TERM, f"head noun '{head}' is a setting"))
+    if head in BROAD_CATEGORY_WORDS and len(words) <= 2 and not is_seed:
+        risks.append(
+            (EscalationReason.BROAD_CATEGORY, f"short phrase headed by category noun '{head}'")
+        )
+    for seed in seeds:
+        seed_words = set(_content(seed))
+        if set(words) <= seed_words | category and seed_words - set(words) and not is_seed:
+            dropped = sorted(seed_words - set(words))
+            risks.append(
+                (
+                    EscalationReason.GENERIC_HEAD_TERM,
+                    f"broader than seed '{seed}' (drops {dropped})",
+                )
+            )
+            break
+    description = set(_content(str(context.get("description", ""))))
+    elsewhere = {
+        w
+        for key in ("product_title", "subtitle", "brand", "author")
+        for w in _content(str(context.get(key, "")))
+    }
+    elsewhere |= {w for text in (*seeds, *context.get("features", ())) for w in _content(str(text))}
+    supported = [w for w in words if w in description or w in elsewhere]
+    if supported and all(w in description and w not in elsewhere for w in supported):
+        risks.append(
+            (
+                EscalationReason.INCIDENTAL_DESCRIPTION_SUPPORT,
+                f"supported only by description words {supported}",
+            )
+        )
+    return risks
+
+
 @dataclass(frozen=True, slots=True)
 class EscalationPolicy:
     enabled: bool = True
@@ -151,6 +275,8 @@ class EscalationPolicy:
     equivalence_conflicts: bool = True
     low_confidence: float = 0.6
     weak_lexical_gap: float = 0.35
+    relevance_risks: bool = True
+    relevance_risk_min: float = 0.7
     max_escalations: int | None = 12
     # Planning assumption only: share of live items expected to escalate.
     expected_rate: float = 0.15
@@ -161,6 +287,7 @@ class EscalationPolicy:
             "lexical_threshold",
             "low_confidence",
             "weak_lexical_gap",
+            "relevance_risk_min",
             "expected_rate",
         ):
             _unit(getattr(self, name), name)
@@ -209,6 +336,12 @@ class EscalationPolicy:
                 )
             baseline = lexical_relevance(keyword, context)
             gap = abs(score - baseline)
+            # A low score for a setting, broad or generic term is the expected
+            # answer, not under-rating: the lexical baseline counts those words as
+            # "supported" just because they appear in the title or seeds.
+            risky = self.relevance_risks and bool(relevance_risks(keyword, context))
+            if score < baseline and risky:
+                gap = 0.0
             if gap >= self.lexical_threshold:
                 return (
                     EscalationReason.LEXICAL_DISAGREEMENT,
@@ -223,6 +356,14 @@ class EscalationPolicy:
                     EscalationReason.LOW_CONFIDENCE_WITH_RISK,
                     f"{conf} < {self.low_confidence:g} and lexical gap {gap:.2f}",
                 )
+            if self.relevance_risks and score >= self.relevance_risk_min:
+                risks = relevance_risks(keyword, context)
+                if risks:
+                    detail = "; ".join(f"{r.value}: {d}" for r, d in risks)
+                    return (
+                        risks[0][0],
+                        f"score {score:g} >= {self.relevance_risk_min:g}; {detail} ({conf})",
+                    )
         elif request.type is JudgmentType.INTENT and self.intent_structure:
             shape = _structure(keyword, context)
             if shape is not None and structured.get("label") == "transactional":

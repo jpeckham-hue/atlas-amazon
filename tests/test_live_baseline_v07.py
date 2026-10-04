@@ -28,6 +28,7 @@ from atlas_amazon.report import report_json
 from atlas_amazon.research import load_scenario
 from atlas_amazon.semantic import (
     BatchedJudgmentProvider,
+    EscalationPolicy,
     LLMReviewThemeProvider,
     ReplayTransport,
     UsageLedger,
@@ -66,13 +67,17 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", refuse)
 
 
+# The policy these recordings were made with: v0.8 added relevance-risk signals.
+V07_POLICY = EscalationPolicy(relevance_risks=False)
+
+
 def replay(name, ledger=None):
     transport = ReplayTransport(V07 / f"{name}.jsonl")
     ledger = ledger or UsageLedger()
     return (
         load_scenario(SCENARIOS / f"{name}.json")
         .with_providers(
-            judgments=BatchedJudgmentProvider(transport, ledger=ledger),
+            judgments=BatchedJudgmentProvider(transport, ledger=ledger, escalation=V07_POLICY),
             review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
         )
         .run()

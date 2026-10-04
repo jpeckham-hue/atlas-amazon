@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "atlas-amazon"
-version = "0.7.0"
+version = "0.8.0"
 description = "Evidence-backed Amazon SEO and listing optimization engine (books first, then recipe-driven products)."
 readme = "README.md"
 requires-python = ">=3.11"
