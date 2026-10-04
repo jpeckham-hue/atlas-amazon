@@ -7,7 +7,7 @@ Agreement is reported per type; there is no combined score.
 | Type | Compared | Agreed | Agreement | Other metrics | Missing | Extra |
 |---|---|---|---|---|---|---|
 | relevance | 11 | 10 | 91% | mean_absolute_error 0.032 | 0 | 0 |
-| intent | 4 | 3 | 75% | mean_absolute_error 0.025 | 0 | 9 |
+| intent | 5 | 4 | 80% | mean_absolute_error 0.020 | 0 | 8 |
 | entity | 3 | 3 | 100% | blocking_agreement_rate 1.000 | 0 | 10 |
 | equivalence | 1 | 1 | 100% | - | 0 | 0 |
 
@@ -17,10 +17,10 @@ Relevance agreement means abs(score difference) <= 0.2.
 
 - **small town**: fixture judgments `0.3` vs replayed model `0.65`
   - fixture judgments: A setting word; on its own not a book search. (`ev_f2290096163f13685ba36934`)
-  - replayed model: A small-town setting is a core cozy-mystery convention. (`ev_5a3791388bf3ed3a2596723b`)
+  - replayed model: A small-town setting is a core cozy-mystery convention. (`ev_1cbf6bda4d45cef41bd37eaf`)
 
 ## intent disagreements
 
 - **cozy mystery**: fixture judgments `{'label': 'commercial_investigation', 'score': 0.7}` vs replayed model `{'label': 'transactional', 'score': 0.8}`
   - fixture judgments: Genre browsing. (`ev_5ba3a4fc12ef42bbc77b7781`)
-  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_69bb8ca94265f67e0f15088a`)
+  - replayed model: Genre queries on Amazon usually precede a purchase. (`ev_f948df7a495cb447b7f69cfe`)

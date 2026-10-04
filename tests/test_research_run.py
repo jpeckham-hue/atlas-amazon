@@ -249,7 +249,14 @@ class TestOrchestration:
             run(providers_=ResearchProviders(catalog=Rogue()))
 
     def test_proposals_are_validated(self):
-        result = run()
+        # A supplied feature supports "leak proof", so it can be packed.
+        product = ProductInput(
+            PRODUCT.title,
+            PRODUCT.recipe_id,
+            competitor_asins=PRODUCT.competitor_asins,
+            attributes={**PRODUCT.attributes, "features": ["Leak proof lid"]},
+        )
+        result = run(product=product)
         assert len(result.proposals) == len(result.validations) == 1
         assert result.validations[0].proposal is result.proposals[0]
         assert result.validations[0].valid

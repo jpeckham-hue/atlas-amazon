@@ -1256,7 +1256,45 @@ equivalence 2/2.
   reviewer's 0.3 but below the 0.7 relevance-risk threshold; it rose from 11th
   to 9th when the Kindle Unlimited keyword fell). Product recommendations swap
   "straw lid" for "bpa free" (0.45): neither is a supplied feature;
-  recommendations do not yet require first-party support.
+  recommendations do not yet require first-party support (fixed in the
+  closing pass below).
+
+### Closing pass (offline)
+
+Two fixes for the live v0.9 findings, verified by serving the v0.9 live
+answers to the current pipeline (`tests/test_v09_closing.py`, report:
+[docs/baselines/live_v0.9_closing.md](baselines/live_v0.9_closing.md)).
+
+* **Format-word intent rule** (`semantic/deterministic.py`,
+  `format_word_shopping`): a qualified subgenre whose head noun is a product
+  format word (book, novel, paperback, hardcover, ebook, audiobook, edition,
+  boxset) is a search for products in that subgenre: transactional 0.8,
+  answered before the model. A bare genre plus format ("mystery books", a
+  broad category) and a genre without a format word ("small town mystery",
+  browsing) stay with the model. `ResearchConfig(intent_rules=False)` turns
+  it off.
+* **Feature-support gate** (`planner/support.py`): a ranked keyword whose
+  claimed words are not stated in the seller's first-party information
+  (title, subtitle, brand, author, features, description; never seeds) is
+  excluded from recommendations and backend terms as `unsupported_by_product`
+  and reported in `ResearchResult.unsupported_opportunities` with the
+  unsupported terms, the sources checked and its market evidence (family
+  sources plus every evidence ID its score cites). It stays ranked. The
+  recipe's `[support] claims` sets which words are claims: `descriptors`
+  (physical products: every word beyond the product type) or `attributes`
+  (books: unit words, "x free"/"x proof"-style compounds and
+  "with/without/for" phrases; genre, topic and setting words are relevance
+  questions). Book format claims such as "large print" are not yet covered.
+  `ResearchConfig(require_feature_support=False)` turns it off.
+
+Against the human-reviewed reference: book intent 3/4 -> **4/4**; book
+relevance 10/11, product relevance 12/12 and intent 5/5, entity and
+equivalence unchanged. Blocked as unsupported: "bpa free", "straw lid",
+"water bottle with straw", "insulated water bottle with straw", "water
+bottles for kids" (product) and "cozy mystery with cats" (book); the product's
+recommendations lose "bpa free" and its backend proposal loses "bpa free",
+"straw" and "kids". Replays and reports of earlier recordings run with
+`semantic_helpers.HISTORICAL` (both fixes off) and stay byte-identical.
 
 ## Roadmap
 
@@ -1299,13 +1337,13 @@ equivalence 2/2.
 10. **v0.9 (this release)**: intent separated from relevance in the prompt,
     intent-risk escalation, loadable historical prompt versions, and an
     offline routing comparison against the human-reviewed reference.
-11. **Next (recommended)**: close semantic calibration with two small fixes,
-    measured offline on the v0.9 recordings: escalate "<genre> books" intent
-    away from browsing only with a second opinion (format-word queries), and
-    require first-party support (or an explicit "only if accurate" caveat) for
-    recommended feature keywords such as "bpa free". Then the first read-only
-    live market-data adapter (autocomplete or SP-API Catalog) with the same
-    plan / cap / record / replay discipline.
+11. **Next (recommended)**: semantic calibration is closed. Start the first
+    read-only live market-data adapter (autocomplete or SP-API Catalog) with
+    the same plan / cap / record / replay discipline. Known small items to
+    revisit as data arrives: setting terms just below the 0.7 relevance-risk
+    threshold can still enter the top-N ("small town" at 0.5), the Kindle
+    Unlimited relevance fixture was never human-reviewed, and book format
+    claims ("large print") are not yet support-checked.
 12. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,

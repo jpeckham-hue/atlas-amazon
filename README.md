@@ -30,7 +30,13 @@ into its parts.
 > [docs/baselines/live_v0.9.md](docs/baselines/live_v0.9.md)) fixed both target
 > intents ("bottle water" transactional, "small town mystery" browsing) and kept
 > product relevance at 12/12, but over-corrected book intent toward browsing
-> ("cozy mystery books") and dropped one book relevance (10/11).
+> ("cozy mystery books") and dropped one book relevance (10/11). A closing
+> pass (offline, [docs/baselines/live_v0.9_closing.md](docs/baselines/live_v0.9_closing.md))
+> answers qualified-subgenre-plus-format queries ("cozy mystery books") as
+> transactional by rule (book intent 4/4) and keeps feature keywords the
+> seller's own information does not support ("bpa free", "straw lid", "for
+> kids") out of recommendations and backend terms, reporting them as
+> `unsupported_by_product` market opportunities instead.
 >
 > In v0.8 (offline, no live spend): relevance-risk signals (setting,
 > broad-category, generic and description-only terms) send over-rated

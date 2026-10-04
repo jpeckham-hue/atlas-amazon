@@ -19,8 +19,18 @@ Rules (entity judgments only):
   belong to the seller and are not another company's entity, so the answer
   is `none` by definition.
 
-Relevance and intent are not answered here: no rule reproduces them
-reliably. Equivalence is already settled deterministically before a request
+Intent (v0.9 closing pass), one narrow rule:
+
+* `format_word_shopping`: a qualified subgenre with an explicit product-format
+  word as its head noun ("cozy mystery books", "small town mystery books") is
+  a shopper looking for products in that subgenre: `transactional`, score
+  0.8. A bare genre with a format word ("mystery books") is a broad category
+  and a genre without a format word ("small town mystery") is browsing; both
+  stay with the model. The v0.9 prompt's genre guidance pushed every book
+  query toward browsing, including these.
+
+Relevance is not answered here: no rule reproduces it reliably. Equivalence
+is already settled deterministically before a request
 is made (`keywords.families`: stopword variants and attribute rotations),
 and only the remaining ambiguous pairs reach the model.
 """
@@ -40,15 +50,30 @@ from atlas_amazon.recipes.schema import Recipe
 
 RULES_PROVIDER = "rules"
 RULES_VERSION = "deterministic-v1"
+FORMAT_WORDS = frozenset(
+    fold_plural(w)
+    for w in (
+        "book",
+        "novel",
+        "paperback",
+        "hardcover",
+        "hardback",
+        "ebook",
+        "audiobook",
+        "edition",
+        "boxset",
+    )
+)
 
 
 class RuleJudgmentProvider:
     name = RULES_PROVIDER
 
-    def __init__(self, recipe: Recipe, *, judged_at: datetime) -> None:
+    def __init__(self, recipe: Recipe, *, judged_at: datetime, intent_rules: bool = True) -> None:
         if judged_at.utcoffset() is None:
             raise ValueError("judged_at must be timezone-aware")
         self.recipe = recipe
+        self.intent_rules = intent_rules
         self.judged_at = judged_at
         self._known = [
             (label, term, keyword_key(term))
@@ -58,6 +83,8 @@ class RuleJudgmentProvider:
 
     def answer(self, request: JudgmentRequest) -> tuple[str, dict, str] | None:
         """(rule, result, rationale) when a rule settles the request, else None."""
+        if request.type is JudgmentType.INTENT:
+            return self._intent(request) if self.intent_rules else None
         if request.type is not JudgmentType.ENTITY:
             return None
         keyword = request.input["keyword"]
@@ -86,6 +113,24 @@ class RuleJudgmentProvider:
                 "keyword names no other company's entity.",
             )
         return None
+
+    def _intent(self, request: JudgmentRequest) -> tuple[str, dict, str] | None:
+        from atlas_amazon.semantic.escalation import GENRE_WORDS
+
+        words = [
+            fold_plural(t) for t in tokenize(request.input["keyword"]) if t not in EDGE_STOPWORDS
+        ]
+        if len(words) < 3 or words[-1] not in FORMAT_WORDS:
+            return None
+        qualifiers = words[:-1]
+        if not any(w in GENRE_WORDS for w in qualifiers):
+            return None
+        return (
+            "format_word_shopping",
+            {"label": "transactional", "score": 0.8},
+            f"A qualified subgenre with the format word '{words[-1]}' as its head is a search "
+            "for products in that subgenre, not genre browsing.",
+        )
 
     def judge(
         self, requests: Sequence[JudgmentRequest], *, marketplace: str, run_id: str | None = None

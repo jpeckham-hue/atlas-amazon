@@ -200,7 +200,13 @@ def plan_backend(
     for item in exclusions:
         counts[item.reason.value] = counts.get(item.reason.value, 0) + 1
     for item in rule_excluded:
-        kind = "entity_flag" if item.rule_id.startswith("entity_judgment:") else "prohibited_term"
+        kind = (
+            "entity_flag"
+            if item.rule_id.startswith("entity_judgment:")
+            else "unsupported_by_product"
+            if item.rule_id == "unsupported_by_product"
+            else "prohibited_term"
+        )
         counts[kind] = counts.get(kind, 0) + 1
     excluded_text = ", ".join(f"{n} {reason}" for reason, n in sorted(counts.items())) or "none"
 

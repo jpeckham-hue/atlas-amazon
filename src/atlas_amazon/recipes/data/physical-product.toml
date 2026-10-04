@@ -226,3 +226,11 @@ priorities = [
   "review_themes",
   "category_attributes",
 ]
+
+# --- Feature claims -----------------------------------------------------------
+# Every word of a recommended keyword beyond the product type describes the
+# product ("bpa free", "straw lid", "for kids"), so it needs first-party support
+# (title, features, description, brand) before Atlas recommends it.
+
+[support]
+claims = "descriptors"

@@ -15,7 +15,7 @@ Regenerate with `ATLAS_REGEN_EXAMPLES=1 pytest tests/test_benchmark.py`.
 
 | Scenario | v0.4b expected | v0.5 expected (recorded) | v0.5 expected (plan) | v0.4b worst case | v0.5 worst case (recorded) | v0.5 worst case (plan) |
 |---|---|---|---|---|---|---|
-| book_cozy_mystery | $0.0966 | $0.0248 | $0.0243 | $3.6663 | $0.0678 | $0.0856 |
+| book_cozy_mystery | $0.0966 | $0.0243 | $0.0234 | $3.6663 | $0.0660 | $0.0838 |
 | physical_water_bottle | $0.1395 | $0.0298 | $0.0308 | $5.2554 | $0.0826 | $0.0990 |
 
 The plan's worst case includes the escalation reserve (strong-tier calls the policy could add up to its cap); the recorded worst case prices only the calls that were made, each at its full `max_tokens`.
@@ -31,7 +31,7 @@ The plan's worst case includes the escalation reserve (strong-tier calls the pol
 
 | Scenario | Requested (v0.4b and v0.5) | Human | Deterministic | Not needed | Model | Escalated | Downstream identical |
 |---|---|---|---|---|---|---|---|
-| book_cozy_mystery | 40 | 2 | 1 | 0 | 37 | 4 | yes |
+| book_cozy_mystery | 40 | 2 | 3 | 0 | 35 | 4 | yes |
 | physical_water_bottle | 59 | 0 | 5 | 6 | 48 | 6 | yes |
 
 Requested judgments are the same in both versions. v0.4b sent every one of them (plus one review-theme call) to the model, one call each. v0.5 answers human decisions and deterministic questions without a model, skips relevance and intent for families that cannot be ranked, and batches the rest. "Downstream identical" compares ranking, entity flags, proposals, recommendations and families between individual and batched execution against the same scripted answers.

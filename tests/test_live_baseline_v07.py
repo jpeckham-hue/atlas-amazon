@@ -45,7 +45,7 @@ from atlas_amazon.semantic.recorded import final_judgments, recorded_judgments
 from atlas_amazon.semantic.records import ChecksummedJsonl
 from atlas_amazon.semantic.tiers import FAST, STRONG
 from atlas_amazon.semantic.usage import measured_recording_cost
-from semantic_helpers import RECORDINGS, SCENARIOS
+from semantic_helpers import HISTORICAL, RECORDINGS, SCENARIOS
 from test_examples import ROOT, check
 
 V07 = RECORDINGS / "live" / "v07"
@@ -84,7 +84,7 @@ def replay(name, ledger=None):
             ),
             review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
         )
-        .run()
+        .run(config=HISTORICAL)
     )
 
 
@@ -100,7 +100,7 @@ def comparison(name, result):
 
 
 def fixture_run(name):
-    return load_scenario(SCENARIOS / f"{name}.json").run()
+    return load_scenario(SCENARIOS / f"{name}.json").run(config=HISTORICAL)
 
 
 def v06_final(name, fixture):

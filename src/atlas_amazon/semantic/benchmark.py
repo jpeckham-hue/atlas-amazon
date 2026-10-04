@@ -84,7 +84,9 @@ def compare_downstream(scenario_path: Path) -> tuple[bool, tuple[str, ...]]:
             ResearchConfig(deterministic_judgments=False, skip_unrankable_judgments=False),
         )
     )
-    batched = _downstream(run(BatchedJudgmentProvider, ResearchConfig()))
+    # Same rules on both sides: the individual run uses none, so neither may the
+    # batched one answer intent deterministically (entity rules match the fixture).
+    batched = _downstream(run(BatchedJudgmentProvider, ResearchConfig(intent_rules=False)))
     diffs = tuple(k for k in individual if individual[k] != batched[k])
     return not diffs, diffs
 

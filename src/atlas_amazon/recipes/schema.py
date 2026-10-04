@@ -102,6 +102,10 @@ class Recipe:
     # code can recognize without a model, e.g. KDP program names (trademark).
     known_entities: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     known_entities_source: SourceRef | None = None
+    # Which keyword words count as product claims needing first-party support:
+    # "attributes" (attribute-like words and with/for phrases) or "descriptors"
+    # (every word beyond the product type). See planner.support.
+    claims_mode: str = "attributes"
 
     def enabled_rules(self) -> tuple[RuleSpec, ...]:
         return tuple(r for r in self.rules.values() if r.enabled)

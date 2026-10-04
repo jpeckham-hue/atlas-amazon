@@ -550,8 +550,9 @@ class TestPlan:
         assert set(stages) == {"review_themes", "equivalence_judgments", "keyword_judgments"}
         kw_stage = stages["keyword_judgments"]
         # Planned on the 14 families before the equivalence merge (13 after): an upper bound.
-        assert (kw_stage.requested, kw_stage.human, kw_stage.deterministic) == (42, 2, 1)
-        assert kw_stage.live == 39 and plan.planned_calls == 3
+        # 1 entity rule + 2 format-word intent rules ("... mystery books").
+        assert (kw_stage.requested, kw_stage.human, kw_stage.deterministic) == (42, 2, 3)
+        assert kw_stage.live == 37 and plan.planned_calls == 3
         assert any("upper bound" in n for n in plan.notes)
         assert "keyword_judgments" in render_plan_markdown(plan)
 

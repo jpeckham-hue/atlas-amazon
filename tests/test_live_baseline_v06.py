@@ -26,7 +26,7 @@ from atlas_amazon.semantic.recorded import final_judgments, recorded_judgments
 from atlas_amazon.semantic.records import ChecksummedJsonl
 from atlas_amazon.semantic.tiers import FAST, STRONG
 from atlas_amazon.semantic.usage import measured_recording_cost
-from semantic_helpers import RECORDINGS, SCENARIOS
+from semantic_helpers import HISTORICAL, RECORDINGS, SCENARIOS
 from test_examples import ROOT
 
 LIVE = RECORDINGS / "live"
@@ -51,7 +51,7 @@ def v06_judgments(name):
 
 
 def fixture_run(name):
-    return load_scenario(SCENARIOS / f"{name}.json").run()
+    return load_scenario(SCENARIOS / f"{name}.json").run(config=HISTORICAL)
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -122,7 +122,7 @@ def test_silently_omitted_items_were_caught_and_escalated():
     ],
 )
 def test_documented_v06_agreement_is_reproduced(name, expected):
-    fixture = load_scenario(SCENARIOS / f"{name}.json").run()
+    fixture = load_scenario(SCENARIOS / f"{name}.json").run(config=HISTORICAL)
     # v0.6 runs also used deterministic rule judgments (unchanged since); recordings
     # hold only model exchanges.
     rules = [j for j in fixture.judgments if j.provider == "rules"]

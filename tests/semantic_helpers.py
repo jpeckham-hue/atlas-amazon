@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from atlas_amazon.judgments import JudgmentRequest, JudgmentType
+from atlas_amazon.research import ResearchConfig
 from atlas_amazon.semantic import ScriptedTransport, TransportResponse
 from atlas_amazon.semantic.usage import estimate_tokens
 
@@ -53,3 +54,9 @@ def relevance(keyword="insulated water bottle", title="Acme Insulated Water Bott
 
 def estimate(request):
     return estimate_tokens(request)
+
+
+# Behavior before the v0.9 closing pass (no format-word intent rule, no feature
+# support gate): replays and reports of earlier live recordings are pinned to it,
+# so they keep reproducing exactly what those versions produced.
+HISTORICAL = ResearchConfig(intent_rules=False, require_feature_support=False)

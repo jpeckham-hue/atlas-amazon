@@ -36,7 +36,7 @@ from atlas_amazon.semantic.strategies import (
     strategy_cost,
 )
 from atlas_amazon.semantic.tiers import FAST, STRONG
-from semantic_helpers import SCENARIOS
+from semantic_helpers import HISTORICAL, SCENARIOS
 from test_examples import ROOT, check
 from test_semantic_batch import batch_transport, judge
 from test_v08_calibration import REVIEWS, V07, V08_POLICY, _scenario_data
@@ -212,7 +212,7 @@ def data():
             themes = LLMReviewThemeProvider(ReplayTransport(V07 / f"{name}.jsonl"))
             results[label] = sc.with_providers(
                 judgments=PrecomputedJudgmentProvider(served), review_themes=themes
-            ).run()
+            ).run(config=HISTORICAL)
         out[name] = {**d, "v09_strategies": strategies, "v09_results": results}
     return out
 

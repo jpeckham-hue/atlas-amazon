@@ -392,6 +392,19 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
                 for r in plan.rule_exclusions
             ],
         },
+        "unsupported_opportunities": [
+            {
+                "keyword": u.keyword,
+                "rank": u.rank,
+                "score": u.score,
+                "rule_id": u.rule_id,
+                "unsupported_terms": list(u.unsupported_terms),
+                "claimed_terms": list(u.claimed_terms),
+                "checked_sources": list(u.checked_sources),
+                "evidence_ids": list(u.evidence_ids),
+            }
+            for u in result.unsupported_opportunities
+        ],
         "recommendations": [
             {
                 "kind": r.kind.value,
@@ -780,6 +793,25 @@ def render_markdown(result: ResearchResult) -> str:
             f"{blocked}{family}{packed} Evidence: {_ids(r['evidence_ids'])}"
         )
     w("")
+    if d["unsupported_opportunities"]:
+        w("### Market opportunities not supported by the product")
+        w("")
+        w(
+            "Ranked keywords with market evidence that claim something the seller's own "
+            "product information does not state. They are **not** recommended for listing "
+            "copy or backend terms; add the feature to the product information first if it "
+            "is true."
+        )
+        w("")
+        for u in d["unsupported_opportunities"]:
+            w(
+                f"- `{u['keyword']}` (rank {u['rank']}, score {u['score']:.3f}): "
+                f"`{u['rule_id']}`; no first-party support for "
+                f"{', '.join(repr(t) for t in u['unsupported_terms'])} "
+                f"(checked {', '.join(u['checked_sources'])}). Market evidence: "
+                f"{_ids(u['evidence_ids'])}"
+            )
+        w("")
 
     w("## Proposals")
     w("")

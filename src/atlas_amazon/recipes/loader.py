@@ -39,7 +39,9 @@ from atlas_amazon.recipes.schema import (
 
 _RECIPE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _LEAF_ONLY = frozenset({"id", "extends", "version", "description"})
-_TOP_LEVEL = frozenset({"sources", "fields", "rules", "backend", "scoring", "research", "entities"})
+_TOP_LEVEL = frozenset(
+    {"sources", "fields", "rules", "backend", "scoring", "research", "entities", "support"}
+)
 # Labels a recipe may list known entity terms under (the judgment contract's
 # entity labels, minus "none").
 ENTITY_TERM_LABELS = ("brand", "author", "trademark", "product_line", "other")
@@ -411,6 +413,11 @@ def _build(leaf: Mapping[str, Any], merged: Mapping[str, Any], lineage: tuple[st
         raise _fail(rid, "scoring.coverage", "at least one weight must be positive")
 
     entities, entities_source = _build_entities(rid, merged.get("entities"), sources)
+    support = _table(rid, "support", merged.get("support", {}))
+    _check_keys(rid, "support", support, frozenset({"claims"}))
+    claims_mode = support.get("claims", "attributes")
+    if claims_mode not in ("attributes", "descriptors"):
+        raise _fail(rid, "support.claims", "must be 'attributes' or 'descriptors'")
 
     research = _table(rid, "research", merged.get("research", {}))
     _check_keys(rid, "research", research, frozenset({"priorities"}))
@@ -430,6 +437,7 @@ def _build(leaf: Mapping[str, Any], merged: Mapping[str, Any], lineage: tuple[st
         sources=MappingProxyType(sources),
         known_entities=MappingProxyType(entities),
         known_entities_source=entities_source,
+        claims_mode=claims_mode,
     )
 
 

@@ -33,7 +33,7 @@ from atlas_amazon.semantic.records import ChecksummedJsonl
 from atlas_amazon.semantic.review import human_judgments, load_review_decisions, supersede
 from atlas_amazon.semantic.tiers import FAST, STRONG
 from atlas_amazon.semantic.usage import measured_recording_cost
-from semantic_helpers import RECORDINGS, SCENARIOS
+from semantic_helpers import HISTORICAL, RECORDINGS, SCENARIOS
 from test_examples import ROOT, check
 from test_live_baseline_v07 import replay as replay_v07
 from test_v08_calibration import REVIEWS, _scenario_data
@@ -62,12 +62,12 @@ def replay(name, ledger=None):
             judgments=BatchedJudgmentProvider(transport, ledger=ledger),
             review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
         )
-        .run()
+        .run(config=HISTORICAL)
     )
 
 
 def human_reference(name, judgments):
-    fixture = load_scenario(SCENARIOS / f"{name}.json").run()
+    fixture = load_scenario(SCENARIOS / f"{name}.json").run(config=HISTORICAL)
     provider = load_review_decisions(REVIEWS / "v08_human_decisions.json")[name]
     requests = [JudgmentRequest(j.type, j.input) for j in judgments]
     return supersede(fixture.judgments, human_judgments(provider, requests))

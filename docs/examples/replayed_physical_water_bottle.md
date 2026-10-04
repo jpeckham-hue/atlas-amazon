@@ -327,22 +327,30 @@ Other themes (not repeated, or mixed/neutral): heavy (negative, 1)
 
 ## Recommendations
 
-- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_6f69de62160ee92029d43817`. Evidence: `ev_279ad9814f4442b6fd0c75eb`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f4fd1712945cf3d0af8a31b3` (+3 more)
+- **keyword_gap** `insulated water bottle`: Ranked #1 (score 0.793) but none of its 2 family phrases appears in any weighted field. Consider: title, item_highlights, bullets, description. Family variants: water bottle insulated. Packed by proposal `prop_5d631b84328e392d13d55d8c`. Evidence: `ev_279ad9814f4442b6fd0c75eb`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f4fd1712945cf3d0af8a31b3` (+3 more)
 - **placement_upgrade** `leak proof`: Ranked #3 (score 0.715) but found only in bullets (placement 0.60). Consider: title, item_highlights. Evidence: `ev_c1d519cbb372815b735aaf5e`, `ev_fad466f336253d1d8ca2237d`, `ev_7053809e8f56fdcb80360f97`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `double wall vacuum`: Ranked #4 (score 0.695) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_6f69de62160ee92029d43817`. Evidence: `ev_7bf1eb011ecfe4efb596cb33`, `ev_9d5250bbe438bc5c61e9a908`, `ev_d68a8b206d079f4a8ff5ce5e`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `straw lid`: Ranked #6 (score 0.599) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_6f69de62160ee92029d43817`. Evidence: `ev_942ac53f7471b02b9642a16d`, `ev_bbc9eb0091469ac753904ecd`, `ev_56ded1287e94494dca544fee`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `double wall vacuum`: Ranked #4 (score 0.695) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_5d631b84328e392d13d55d8c`. Evidence: `ev_7bf1eb011ecfe4efb596cb33`, `ev_9d5250bbe438bc5c61e9a908`, `ev_d68a8b206d079f4a8ff5ce5e`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
 - **keyword_gap** `double wall`: Ranked #7 (score 0.588) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Evidence: `ev_3d8132069ea4df05f83108d8`, `ev_ef542322b00eac38e76bd170`, `ev_2f9f5231f1035225f0f19f3a`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `vacuum insulation`: Ranked #9 (score 0.577) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_6f69de62160ee92029d43817`. Evidence: `ev_7378ec7125df0ab6214266e8`, `ev_0e00bac0c3e1419e9571ec44`, `ev_8608850cbc3eec247a69d688`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
-- **keyword_gap** `bpa free`: Ranked #10 (score 0.569) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_6f69de62160ee92029d43817`. Evidence: `ev_a61026d142db11efb0aaef02`, `ev_b7056b1e3800ee4bf7ec6a63`, `ev_07367de015a01bee8538f5ef`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+- **keyword_gap** `vacuum insulation`: Ranked #9 (score 0.577) but the exact phrase appears in no weighted field. Consider: title, item_highlights, bullets, description. Packed by proposal `prop_5d631b84328e392d13d55d8c`. Evidence: `ev_7378ec7125df0ab6214266e8`, `ev_0e00bac0c3e1419e9571ec44`, `ev_8608850cbc3eec247a69d688`, `ev_35f6d219e7c49ae7d271b453` (+2 more)
+
+### Market opportunities not supported by the product
+
+Ranked keywords with market evidence that claim something the seller's own product information does not state. They are **not** recommended for listing copy or backend terms; add the feature to the product information first if it is true.
+
+- `straw lid` (rank 6, score 0.599): `unsupported_by_product`; no first-party support for 'straw' (checked product_title, brand, features, description). Market evidence: `ev_35f6d219e7c49ae7d271b453`, `ev_eb2efabff59698fdccb240fd`, `ev_942ac53f7471b02b9642a16d`, `ev_bbc9eb0091469ac753904ecd` (+2 more)
+- `bpa free` (rank 10, score 0.569): `unsupported_by_product`; no first-party support for 'bpa', 'free' (checked product_title, brand, features, description). Market evidence: `ev_35f6d219e7c49ae7d271b453`, `ev_eb2efabff59698fdccb240fd`, `ev_a61026d142db11efb0aaef02`, `ev_b7056b1e3800ee4bf7ec6a63` (+2 more)
+- `insulated water bottle with straw` (rank 11, score 0.525): `unsupported_by_product`; no first-party support for 'straw' (checked product_title, brand, features, description). Market evidence: `ev_376398d563dbdf5abcf7cc9b`, `ev_6a05fda994e50c71d72f2784`, `ev_8ea1aeea6e6605cb8cfd5c17`, `ev_543a396d6b2305fd6ffd488e` (+3 more)
+- `water bottles for kids` (rank 13, score 0.506): `unsupported_by_product`; no first-party support for 'kid' (checked product_title, brand, features, description). Market evidence: `ev_b5806c15d042fbc5a24ddacf`, `ev_b8b34ff5866cf9be387261be`, `ev_03f6befaf9f976b97890ed95`, `ev_a46145f25f3cf0cd1befe0fb` (+5 more)
+- `water bottle with straw` (rank 14, score 0.477): `unsupported_by_product`; no first-party support for 'straw' (checked product_title, brand, features, description). Market evidence: `ev_b5806c15d042fbc5a24ddacf`, `ev_5eb96b820306f7a06a23c42d`, `ev_8cd644a1a6f2b00053780bc1`, `ev_1ac4674aa77c97650906a13f` (+3 more)
 
 ## Proposals
 
-### `prop_6f69de62160ee92029d43817`: search_terms (evidence)
+### `prop_5d631b84328e392d13d55d8c`: search_terms (evidence)
 
-Packs 6 of 16 ranked keywords, best first, into search_terms (76/249 bytes). Excluded: 7 duplicate, 1 entity_flag, 25 in_visible_listing, 3 stopword. Skips 2 redundant family member(s) sharing their canonical's words: water bottle insulated, kids water bottle. Retains current unscored content: flask, gym, hiking.
+Packs 3 of 16 ranked keywords, best first, into search_terms (56/249 bytes). Excluded: 4 duplicate, 1 entity_flag, 18 in_visible_listing, 5 unsupported_by_product. Skips 1 redundant family member(s) sharing their canonical's words: water bottle insulated. Retains current unscored content: flask, gym, hiking.
 
-Proposed value: `insulated double wall vacuum straw insulation bpa free kids flask gym hiking`
+Proposed value: `insulated double wall vacuum insulation flask gym hiking`
 
 Validation: **VALID**
 
-Evidence: `ev_279ad9814f4442b6fd0c75eb`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f4fd1712945cf3d0af8a31b3`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5`, `ev_eb2efabff59698fdccb240fd`, `ev_7bf1eb011ecfe4efb596cb33` (+15 more)
+Evidence: `ev_279ad9814f4442b6fd0c75eb`, `ev_15dcaed51f61e9a6b1d41b04`, `ev_55405880b83009c2c09d4cf3`, `ev_f4fd1712945cf3d0af8a31b3`, `ev_35f6d219e7c49ae7d271b453`, `ev_fa63e88a13aaa2fae13c6ac5`, `ev_eb2efabff59698fdccb240fd`, `ev_7bf1eb011ecfe4efb596cb33` (+5 more)

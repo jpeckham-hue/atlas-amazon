@@ -5,7 +5,7 @@
 - Seeds (seed_keywords attribute): cozy mystery, small town mystery
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=human
 - Keyword families: on
-- Evidence fingerprint: `d1dcffb16dc97bf8`
+- Evidence fingerprint: `4b90ff14975f2985`
 
 ## Research tasks
 
@@ -17,11 +17,11 @@
 | search_term_demand | search_demand | executed | 16 / 0 | suggestions for 2 seeds; metrics requested for 14 candidates |
 | series_and_format_signals | - | unsupported | 0 / 0 | no offline research task implements this priority yet |
 | semantic | equivalence_judgments | executed | 1 / 0 | 1 requested, 1 valid model judgments |
-| semantic | keyword_judgments | executed | 20 / 0 | 39 requested, 17 valid model judgments, 1 deterministic, 2 human, 19 unanswered (fallbacks apply) |
+| semantic | keyword_judgments | executed | 21 / 0 | 39 requested, 16 valid model judgments, 3 deterministic, 2 human, 18 unanswered (fallbacks apply) |
 
 ## Evidence summary
 
-51 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 21, keyword_metric 14, review_sample 7, review_theme 4.
+52 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 22, keyword_metric 14, review_sample 7, review_theme 4.
 
 - Missing, asins without reviews: B0BOOK0001
 
@@ -41,9 +41,9 @@
 | 1 | cozy mystery | 0.758 | 0.380 J | 0.188 | 0.020 | 0.070 J | 0.100 |
 | 2 | amateur sleuth | 0.756 | 0.320 J | 0.146 | 0.140 | 0.050 H | 0.100 |
 | 3 | small town murder mystery | 0.687 | 0.320 J | 0.137 | 0.130 | 0.100 H | 0.000 |
-| 4 | small town mystery books | 0.674 | 0.320 J | 0.134 | 0.120 | 0.100 H | 0.000 |
-| 5 | cozy mystery series | 0.666 | 0.360 R | 0.171 | 0.060 | 0.075 H | 0.000 |
-| 6 | cozy mystery books (+1 variant) | 0.656 | 0.360 J | 0.179 | 0.032 | 0.085 J | 0.000 |
+| 4 | cozy mystery series | 0.666 | 0.360 R | 0.171 | 0.060 | 0.075 H | 0.000 |
+| 5 | small town mystery books | 0.654 | 0.320 J | 0.134 | 0.120 | 0.080 J | 0.000 |
+| 6 | cozy mystery books (+1 variant) | 0.651 | 0.360 J | 0.179 | 0.032 | 0.080 J | 0.000 |
 | 7 | small town mystery | 0.646 | 0.340 J | 0.156 | 0.080 | 0.070 J | 0.000 |
 | 8 | cozy mystery kindle unlimited | 0.604 | 0.240 J | 0.164 | 0.100 | 0.100 H | 0.000 |
 | 9 | agatha christie cozy mystery | 0.511 | 0.160 J | 0.151 | 0.100 | 0.100 H | 0.000 |
@@ -88,17 +88,7 @@ Intent label (judgment): commercial_investigation
 | intent | heuristic | 1.000 | 1.000 | 0.10 | 0.100 | none | heuristic: specificity proxy min(1, 4 words / 4) |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more) | 0/3 competitor listings contain the phrase |
 
-### 4. small town mystery books: 0.674
-
-| Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
-|---|---|---|---|---|---|---|---|
-| relevance | judgment | 0.800 | 0.800 | 0.40 | 0.320 | `ev_89f53971bfa1b1b5e360812e` | judgment ev_89f53971bfa1b1b5e360812e: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Accurate subgenre description. |
-| demand | evidence | 0.669 | 0.669 | 0.20 | 0.134 | `ev_f6f5d59a7552836012746768` | log1p(2500) / log1p(120000) from ['ev_f6f5d59a7552836012746768'] |
-| competition | evidence | 0.400 | 0.600 | 0.20 | 0.120 | `ev_f6f5d59a7552836012746768` | competition 0.400 from ['ev_f6f5d59a7552836012746768'], scored as 1 - value |
-| intent | heuristic | 1.000 | 1.000 | 0.10 | 0.100 | none | heuristic: specificity proxy min(1, 4 words / 4) |
-| competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more) | 0/3 competitor listings contain the phrase |
-
-### 5. cozy mystery series: 0.666
+### 4. cozy mystery series: 0.666
 
 | Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
 |---|---|---|---|---|---|---|---|
@@ -108,7 +98,19 @@ Intent label (judgment): commercial_investigation
 | intent | heuristic | 0.750 | 0.750 | 0.10 | 0.075 | none | heuristic: specificity proxy min(1, 3 words / 4) |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more) | 0/3 competitor listings contain the phrase |
 
-### 6. cozy mystery books: 0.656
+### 5. small town mystery books: 0.654
+
+Intent label (judgment): transactional
+
+| Signal | Source | Raw | Normalized | Weight | Contribution | Evidence | Derivation |
+|---|---|---|---|---|---|---|---|
+| relevance | judgment | 0.800 | 0.800 | 0.40 | 0.320 | `ev_89f53971bfa1b1b5e360812e` | judgment ev_89f53971bfa1b1b5e360812e: fixture-judge-1 / relevance-fixture-v1, confidence 0.8: Accurate subgenre description. |
+| demand | evidence | 0.669 | 0.669 | 0.20 | 0.134 | `ev_f6f5d59a7552836012746768` | log1p(2500) / log1p(120000) from ['ev_f6f5d59a7552836012746768'] |
+| competition | evidence | 0.400 | 0.600 | 0.20 | 0.120 | `ev_f6f5d59a7552836012746768` | competition 0.400 from ['ev_f6f5d59a7552836012746768'], scored as 1 - value |
+| intent | judgment | 0.800 | 0.800 | 0.10 | 0.080 | `ev_fc20c6d2cb59b332dad0bbc0` | judgment ev_fc20c6d2cb59b332dad0bbc0: rules:format_word_shopping / deterministic-v1, confidence 1: A qualified subgenre with the format word 'book' as its head is a search for products in that subgenre, not genre browsing. |
+| competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more) | 0/3 competitor listings contain the phrase |
+
+### 6. cozy mystery books: 0.651
 
 Family phrases: `cozy mystery books`, `mystery books cozy`
 
@@ -119,7 +121,7 @@ Intent label (judgment): transactional
 | relevance | judgment | 0.900 | 0.900 | 0.40 | 0.360 | `ev_ae9c55ed731350edcbe43398` | judgment ev_ae9c55ed731350edcbe43398: fixture-judge-1 / relevance-fixture-v1, confidence 0.85: The genre, in plural form. |
 | demand | evidence | 0.893 | 0.893 | 0.20 | 0.179 | `ev_ab17863b10dfe2ce5937850f`, `ev_e40e07f72b8611c03eff23bf` | log1p(33000 + 1200 = 34200) / log1p(120000) from ['ev_ab17863b10dfe2ce5937850f', 'ev_e40e07f72b8611c03eff23bf'] |
 | competition | evidence | 0.838 | 0.162 | 0.20 | 0.032 | `ev_ab17863b10dfe2ce5937850f`, `ev_e40e07f72b8611c03eff23bf` | volume-weighted mean 0.838 from ['ev_ab17863b10dfe2ce5937850f', 'ev_e40e07f72b8611c03eff23bf'], scored as 1 - value |
-| intent | judgment | 0.850 | 0.850 | 0.10 | 0.085 | `ev_91efaf8c280a283431742a05` | judgment ev_91efaf8c280a283431742a05: fixture-judge-1 / intent-fixture-v1, confidence 0.8: Looking for books to buy. |
+| intent | judgment | 0.800 | 0.800 | 0.10 | 0.080 | `ev_43abd0428feb82fe9b29fed8` | judgment ev_43abd0428feb82fe9b29fed8: rules:format_word_shopping / deterministic-v1, confidence 1: A qualified subgenre with the format word 'book' as its head is a search for products in that subgenre, not genre browsing. |
 | competitor_coverage | evidence | 0.000 | 0.000 | 0.10 | 0.000 | `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more) | 0/3 competitor listings contain any of 2 member phrases |
 
 ### 7. small town mystery: 0.646
@@ -198,7 +200,7 @@ Intent label (judgment): commercial_investigation
 
 ## Semantic judgments
 
-21 valid judgments: entity 3, equivalence 1, intent 4, relevance 13. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); human:editor (human-review-v1); rules:recipe_known_entity (deterministic-v1).
+22 valid judgments: entity 3, equivalence 1, intent 5, relevance 13. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); human:editor (human-review-v1); rules:format_word_shopping (deterministic-v1); rules:recipe_known_entity (deterministic-v1).
 - Entity flag: `cozy mystery kindle unlimited` is a trademark reference (kindle unlimited); kept out of the backend and of listing recommendations. Judgment `ev_a9df96e332a9e9cd6e816870`
 - Entity flag: `agatha christie cozy mystery` is a author reference (Agatha Christie); kept out of the backend and of listing recommendations. Judgment `ev_e5f659d5c1d1c354f208efd1`
 
@@ -231,22 +233,28 @@ Other themes (not repeated, or mixed/neutral): cat characters (positive, 1), rec
 ## Recommendations
 
 - **placement_upgrade** `cozy mystery`: Ranked #1 (score 0.758) but found only in subtitle (placement 0.80). Consider: title. Evidence: `ev_b53f4bfc4e62c05ff205452e`, `ev_032145039c2e06a55e944a02`, `ev_5ba3a4fc12ef42bbc77b7781`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
-- **keyword_gap** `amateur sleuth`: Ranked #2 (score 0.756) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_fb25dd488c02b84eb340e3db`. Evidence: `ev_4b0f4f669ae9731858973b48`, `ev_517ce780c6a55e5b4ae27135`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
-- **keyword_gap** `small town murder mystery`: Ranked #3 (score 0.687) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_fb25dd488c02b84eb340e3db`. Evidence: `ev_206769255b32491984e0ccc5`, `ev_f1ac8667c062fc9bd3c6f8da`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
-- **keyword_gap** `small town mystery books`: Ranked #4 (score 0.674) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Evidence: `ev_89f53971bfa1b1b5e360812e`, `ev_f6f5d59a7552836012746768`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
-- **keyword_gap** `cozy mystery series`: Ranked #5 (score 0.666) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_fb25dd488c02b84eb340e3db`. Evidence: `ev_35b0f5686c9e670ce7a2d689`, `ev_4d5f1b62831d4d8a5988cfd2`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
-- **keyword_gap** `cozy mystery books`: Ranked #6 (score 0.656) but none of its 2 family phrases appears in any weighted field. Consider: title, subtitle, description. Family variants: mystery books cozy. Evidence: `ev_ae9c55ed731350edcbe43398`, `ev_ab17863b10dfe2ce5937850f`, `ev_e40e07f72b8611c03eff23bf`, `ev_91efaf8c280a283431742a05` (+3 more)
-- **keyword_gap** `small town mystery`: Ranked #7 (score 0.646) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_fb25dd488c02b84eb340e3db`. Evidence: `ev_d470380a6465af0557af06ce`, `ev_7ca4e84cf849746a7781c6cc`, `ev_f50f94324d5fba206de5cb4b`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
+- **keyword_gap** `amateur sleuth`: Ranked #2 (score 0.756) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_eb75706a1d9b773adf535ba9`. Evidence: `ev_4b0f4f669ae9731858973b48`, `ev_517ce780c6a55e5b4ae27135`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
+- **keyword_gap** `small town murder mystery`: Ranked #3 (score 0.687) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_eb75706a1d9b773adf535ba9`. Evidence: `ev_206769255b32491984e0ccc5`, `ev_f1ac8667c062fc9bd3c6f8da`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
+- **keyword_gap** `cozy mystery series`: Ranked #4 (score 0.666) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_eb75706a1d9b773adf535ba9`. Evidence: `ev_35b0f5686c9e670ce7a2d689`, `ev_4d5f1b62831d4d8a5988cfd2`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e` (+1 more)
+- **keyword_gap** `small town mystery books`: Ranked #5 (score 0.654) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Evidence: `ev_89f53971bfa1b1b5e360812e`, `ev_f6f5d59a7552836012746768`, `ev_fc20c6d2cb59b332dad0bbc0`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
+- **keyword_gap** `cozy mystery books`: Ranked #6 (score 0.651) but none of its 2 family phrases appears in any weighted field. Consider: title, subtitle, description. Family variants: mystery books cozy. Evidence: `ev_ae9c55ed731350edcbe43398`, `ev_ab17863b10dfe2ce5937850f`, `ev_e40e07f72b8611c03eff23bf`, `ev_43abd0428feb82fe9b29fed8` (+3 more)
+- **keyword_gap** `small town mystery`: Ranked #7 (score 0.646) but the exact phrase appears in no weighted field. Consider: title, subtitle, description. Packed by proposal `prop_eb75706a1d9b773adf535ba9`. Evidence: `ev_d470380a6465af0557af06ce`, `ev_7ca4e84cf849746a7781c6cc`, `ev_f50f94324d5fba206de5cb4b`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
 - **placement_upgrade** `mystery books`: Ranked #10 (score 0.494) but found only in keywords (placement 0.40). Consider: title, subtitle. Evidence: `ev_8c7c62beac705133307f8261`, `ev_a7d3a0538d12a3cf522e368e`, `ev_80fd300ee1cddab3f41f7cf0`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
+
+### Market opportunities not supported by the product
+
+Ranked keywords with market evidence that claim something the seller's own product information does not state. They are **not** recommended for listing copy or backend terms; add the feature to the product information first if it is true.
+
+- `cozy mystery with cats` (rank 12, score 0.455): `unsupported_by_product`; no first-party support for 'cat' (checked product_title, subtitle, features, description). Market evidence: `ev_8ade86cc554a59f9e172403c`, `ev_0c089f9ffe969d54a2e0b2f7`, `ev_55ffac87c8a1334c175608c8`, `ev_3930a7a6baddb4c5f22b3787` (+2 more)
 
 ## Proposals
 
-### `prop_fb25dd488c02b84eb340e3db`: keywords (evidence)
+### `prop_eb75706a1d9b773adf535ba9`: keywords (evidence)
 
-Packs 7 of 13 ranked keywords, best first, into keywords (3/7 slots). Excluded: 2 entity_flag, 1 in_visible_listing, 3 prohibited_term.
+Packs 6 of 13 ranked keywords, best first, into keywords (3/7 slots). Excluded: 2 entity_flag, 1 in_visible_listing, 3 prohibited_term, 1 unsupported_by_product.
 
-Proposed value: `amateur sleuth small town murder mystery | cozy mystery series small town mystery small town | cozy mystery with cats harbor town`
+Proposed value: `amateur sleuth small town murder mystery | cozy mystery series small town mystery small town | harbor town`
 
 Validation: **VALID**
 
-Evidence: `ev_4b0f4f669ae9731858973b48`, `ev_517ce780c6a55e5b4ae27135`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e`, `ev_982ab2f536cff485df6b3055`, `ev_206769255b32491984e0ccc5`, `ev_f1ac8667c062fc9bd3c6f8da`, `ev_35b0f5686c9e670ce7a2d689` (+10 more)
+Evidence: `ev_4b0f4f669ae9731858973b48`, `ev_517ce780c6a55e5b4ae27135`, `ev_3930a7a6baddb4c5f22b3787`, `ev_c77c435fbaf51c5ca439d89e`, `ev_982ab2f536cff485df6b3055`, `ev_206769255b32491984e0ccc5`, `ev_f1ac8667c062fc9bd3c6f8da`, `ev_35b0f5686c9e670ce7a2d689` (+8 more)

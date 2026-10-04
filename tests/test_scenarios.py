@@ -91,6 +91,7 @@ class TestBookScenario:
             "keyword_avoid_terms",
             "entity_judgment:author",
             "entity_judgment:trademark",
+            "unsupported_by_product",  # "cozy mystery with cats": the book has no cats
         }
         # "cozy mystery" is fully covered by the subtitle, so it is excluded as visible
         # (longer phrases containing it still add new words and may be packed).

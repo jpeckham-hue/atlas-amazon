@@ -80,6 +80,12 @@ from atlas_amazon.planner.recommend import (
     keyword_recommendations,
     plan_backend,
 )
+from atlas_amazon.planner.support import (
+    EVIDENCE_FIELDS,
+    UNSUPPORTED_RULE,
+    UnsupportedOpportunity,
+    feature_support,
+)
 from atlas_amazon.providers.base import (
     CatalogProvider,
     JudgmentProvider,
@@ -139,6 +145,11 @@ class ResearchConfig:
     # Give keyword judgments the seller's first-party product context (v0.7);
     # False reproduces the v0.6 {product_title, seeds} context.
     product_context: bool = True
+    # Deterministic intent rules (v0.9 closing pass); False reproduces earlier runs.
+    intent_rules: bool = True
+    # Keep feature keywords the product does not support out of copy and backend
+    # recommendations (they stay visible as unsupported market opportunities).
+    require_feature_support: bool = True
 
     def __post_init__(self) -> None:
         if self.top_n < 1 or self.min_competitor_support < 1 or self.min_theme_count < 1:
@@ -212,6 +223,7 @@ class ResearchResult:
     judgment_resolutions: tuple[JudgmentResolution, ...] = ()
     semantic_usage: SemanticUsageSummary | None = None
     semantic_plans: tuple[SemanticCallPlan, ...] = ()
+    unsupported_opportunities: tuple[UnsupportedOpportunity, ...] = ()
 
     @property
     def unscored(self) -> tuple[SignalDerivation, ...]:
@@ -301,9 +313,9 @@ class ResearchRun:
         left = [r for r in requests if r.input_hash not in done]
         rules: list[Evidence] = []
         if self.config.deterministic_judgments:
-            rules = RuleJudgmentProvider(self.recipe, judged_at=self.started_at).judge(
-                left, marketplace=ctx.marketplace, run_id=self.run_id
-            )
+            rules = RuleJudgmentProvider(
+                self.recipe, judged_at=self.started_at, intent_rules=self.config.intent_rules
+            ).judge(left, marketplace=ctx.marketplace, run_id=self.run_id)
             ruled = answered(rules)
             left = [r for r in left if r.input_hash not in ruled]
         return human, rules, left
@@ -695,6 +707,42 @@ class ResearchRun:
             for flag in entity_flags
         }
 
+        # Feature keywords the seller's first-party information does not support
+        # stay ranked and visible, but are never recommended as if true.
+        unsupported: list[UnsupportedOpportunity] = []
+        if cfg.require_feature_support:
+            first_party = product_context(product, listing, recipe, seeds)
+            checked = tuple(k for k in EVIDENCE_FIELDS if first_party.get(k))
+            for position, score in enumerate(ranked, 1):
+                if score.keyword in blocked:
+                    continue
+                check = feature_support(score.keyword, first_party, recipe.claims_mode)
+                if check.supported:
+                    continue
+                blocked[score.keyword] = RuleExclusion(
+                    score.keyword, UNSUPPORTED_RULE, check.unsupported
+                )
+                unsupported.append(
+                    UnsupportedOpportunity(
+                        keyword=score.keyword,
+                        rank=position,
+                        score=score.score,
+                        unsupported_terms=check.unsupported,
+                        claimed_terms=check.claimed,
+                        checked_sources=checked,
+                        # Why it is an opportunity: the family's sources plus every
+                        # evidence ID its score cites (demand, competition, coverage).
+                        evidence_ids=tuple(
+                            dict.fromkeys(
+                                [
+                                    *by_canonical[score.keyword].evidence_ids,
+                                    *(e for c in score.contributions for e in c.evidence_ids),
+                                ]
+                            )
+                        ),
+                    )
+                )
+
         # 3. Assess.
         audit = audit_listing(listing, recipe)
         theme_report = (
@@ -809,4 +857,5 @@ class ResearchRun:
             judgment_resolutions=resolutions,
             semantic_usage=self._usage_summary([r.used for r in resolutions]),
             semantic_plans=tuple(self._plans),
+            unsupported_opportunities=tuple(unsupported),
         )

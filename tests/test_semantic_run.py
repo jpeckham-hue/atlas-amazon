@@ -72,7 +72,10 @@ class TestFamiliesChangeRecommendations:
 
     def test_packing_skips_redundant_members(self, bottle):
         plan = bottle.backend_plan
-        assert set(plan.redundant_members) == {"water bottle insulated", "kids water bottle"}
+        # "water bottles for kids" (with member "kids water bottle") is excluded as
+        # unsupported_by_product: nothing the seller supplied says it is for kids.
+        assert set(plan.redundant_members) == {"water bottle insulated"}
+        assert "water bottles for kids" in {x.keyword for x in plan.rule_exclusions}
         assert "redundant family member" in bottle.proposals[0].rationale
 
     def test_judgment_confirmed_and_rejected_pairs(self, bottle):

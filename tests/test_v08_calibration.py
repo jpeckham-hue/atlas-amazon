@@ -43,7 +43,7 @@ from atlas_amazon.semantic.strategies import (
 )
 from atlas_amazon.semantic.tiers import FAST, STRONG
 from conftest import T0
-from semantic_helpers import RECORDINGS, SCENARIOS
+from semantic_helpers import HISTORICAL, RECORDINGS, SCENARIOS
 from test_examples import ROOT, check
 from test_live_baseline_v07 import V07_POLICY, V07_PROMPT, comparison, replay
 from test_semantic_batch import batch_transport, items_of, judge
@@ -157,7 +157,7 @@ def test_human_decision_supersedes_fixture_without_deleting_history(tmp_path):
     providers = load_review_decisions(path)
     assert set(providers) == {"book_cozy_mystery"}
 
-    fixture = load_scenario(SCENARIOS / "book_cozy_mystery.json").run()
+    fixture = load_scenario(SCENARIOS / "book_cozy_mystery.json").run(config=HISTORICAL)
     requests = [JudgmentRequest(j.type, j.input) for j in fixture.judgments]
     human = human_judgments(providers["book_cozy_mystery"], requests)
     assert [(j.subject, j.score, j.model) for j in human] == [("harbor town", 0.4, "human:tester")]
@@ -322,7 +322,7 @@ def _scenario_data(name):
     sc = load_scenario(SCENARIOS / f"{name}.json")
     production = replay(name)
     comp = comparison(name, production)
-    fixture = sc.run()
+    fixture = sc.run(config=HISTORICAL)
     run_id = production.metadata.run_id
     recorded = recorded_judgments(
         V07 / f"{name}.jsonl", prompt_version="judgment_batch-v2", run_id=run_id
@@ -350,6 +350,7 @@ def _scenario_data(name):
         providers=sc.providers,
         store=__import__("atlas_amazon.evidence", fromlist=["x"]).InMemoryEvidenceStore(),
         started_at=sc.started_at,
+        config=HISTORICAL,
     )
     stages = run.model_requests()
     results = {"v0.7 production (actual)": production}
@@ -360,7 +361,7 @@ def _scenario_data(name):
         themes = LLMReviewThemeProvider(ReplayTransport(V07 / f"{name}.jsonl"))
         results[label] = sc.with_providers(
             judgments=PrecomputedJudgmentProvider(served), review_themes=themes
-        ).run()
+        ).run(config=HISTORICAL)
     return {
         "fixture": fixture,
         "production": production,
