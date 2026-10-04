@@ -143,10 +143,13 @@ class TestRelevanceRisk:
 
 def test_human_decision_supersedes_fixture_without_deleting_history(tmp_path):
     decisions = json.loads((REVIEWS / "v08_human_decisions.json").read_text(encoding="utf-8"))
-    assert load_review_decisions(REVIEWS / "v08_human_decisions.json") == {}  # nothing decided
+    for entry in decisions["decisions"]:  # start from an undecided copy
+        entry["decision"] = entry["rationale"] = None
+    path = tmp_path / "decisions.json"
+    path.write_text(json.dumps(decisions), encoding="utf-8")
+    assert load_review_decisions(path) == {}  # nothing decided
     decisions |= {"reviewer": "tester", "decided_at": "2026-10-05T09:00:00+00:00"}
     decisions["decisions"][0] |= {"decision": {"score": 0.4}, "rationale": "Setting evidenced."}
-    path = tmp_path / "decisions.json"
     path.write_text(json.dumps(decisions), encoding="utf-8")
     providers = load_review_decisions(path)
     assert set(providers) == {"book_cozy_mystery"}
@@ -157,6 +160,11 @@ def test_human_decision_supersedes_fixture_without_deleting_history(tmp_path):
     assert [(j.subject, j.score, j.model) for j in human] == [("harbor town", 0.4, "human:tester")]
     reference = supersede(fixture.judgments, human)
     by = {(j.type.value, j.subject): j for j in reference}
+    # Scored against the human reference, a 0.8 candidate now disagrees on harbor town.
+    candidate = [j for j in fixture.judgments if not j.is_human and j.subject != "harbor town"]
+    report = evaluate_judgments(candidate, reference, reference_humans=True)
+    relevance = {t.type.value: t for t in report.by_type}["relevance"]
+    assert "harbor town" in relevance.missing_from_candidate  # decided item is scored
     assert by[("relevance", "harbor town")].is_human
     assert by[("relevance", "small town")].provider == "fixture"  # untouched
     old = [
@@ -472,7 +480,9 @@ def render_calibration(data) -> str:
                 human_seen = True
                 refs.append(("human", human))
             for ref_label, ref in refs:
-                row = _row(evaluate_judgments(result.judgments, ref))
+                row = _row(
+                    evaluate_judgments(result.judgments, ref, reference_humans=ref_label == "human")
+                )
                 out.append(
                     f"| {name} | {label} | {ref_label} | "
                     + " | ".join(

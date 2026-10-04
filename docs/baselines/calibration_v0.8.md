@@ -22,18 +22,22 @@ References: **fixture** (original); **proposed** (fixture superseded by Claude's
 |---|---|---|---|---|---|---|
 | book_cozy_mystery | v0.7 production (actual) | fixture | 8/11 | 3/4 | 3/3 | 1/1 |
 | book_cozy_mystery | v0.7 production (actual) | proposed | 8/11 | 3/4 | 3/3 | 1/1 |
+| book_cozy_mystery | v0.7 production (actual) | human | 8/11 | 3/4 | 3/3 | 1/1 |
 | book_cozy_mystery | A: risk escalation (v0.8 signals) | fixture | 10/11 | 3/4 | 3/3 | 1/1 |
 | book_cozy_mystery | A: risk escalation (v0.8 signals) | proposed | 11/11 | 3/4 | 3/3 | 1/1 |
+| book_cozy_mystery | A: risk escalation (v0.8 signals) | human | 11/11 | 3/4 | 3/3 | 1/1 |
 | book_cozy_mystery | B: strong tier for all relevance | fixture | 10/11 | 3/4 | 3/3 | 1/1 |
 | book_cozy_mystery | B: strong tier for all relevance | proposed | 11/11 | 3/4 | 3/3 | 1/1 |
+| book_cozy_mystery | B: strong tier for all relevance | human | 11/11 | 3/4 | 3/3 | 1/1 |
 | physical_water_bottle | v0.7 production (actual) | fixture | 11/12 | 4/5 | 6/6 | 2/2 |
 | physical_water_bottle | v0.7 production (actual) | proposed | 12/12 | 4/5 | 6/6 | 2/2 |
+| physical_water_bottle | v0.7 production (actual) | human | 12/12 | 4/5 | 6/6 | 2/2 |
 | physical_water_bottle | A: risk escalation (v0.8 signals) | fixture | 12/12 | 4/5 | 6/6 | 2/2 |
 | physical_water_bottle | A: risk escalation (v0.8 signals) | proposed | 12/12 | 4/5 | 6/6 | 2/2 |
+| physical_water_bottle | A: risk escalation (v0.8 signals) | human | 12/12 | 4/5 | 6/6 | 2/2 |
 | physical_water_bottle | B: strong tier for all relevance | fixture | 12/12 | 4/5 | 6/6 | 2/2 |
 | physical_water_bottle | B: strong tier for all relevance | proposed | 12/12 | 4/5 | 6/6 | 2/2 |
-
-No human review decisions are recorded yet, so there is no *human* row.
+| physical_water_bottle | B: strong tier for all relevance | human | 12/12 | 4/5 | 6/6 | 2/2 |
 
 ## Cost and calls per strategy (keyword and equivalence stages)
 

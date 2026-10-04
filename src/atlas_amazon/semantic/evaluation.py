@@ -81,15 +81,24 @@ def evaluate_judgments(
     candidate_label: str = "candidate",
     reference_label: str = "reference",
     relevance_tolerance: float = 0.2,
+    reference_humans: bool = False,
 ) -> EvaluationReport:
-    def index(items: Sequence[Judgment]) -> dict[tuple[str, str], Judgment]:
+    """Per-type agreement of candidate judgments with reference judgments.
+
+    Human judgments never count as candidates (they are not model output).
+    In the reference they are ignored by default; pass `reference_humans=True`
+    when the reference *is* human-reviewed (fixture superseded by review
+    decisions), so the decided judgments are what candidates are scored on.
+    """
+
+    def index(items: Sequence[Judgment], humans: bool) -> dict[tuple[str, str], Judgment]:
         out: dict[tuple[str, str], Judgment] = {}
         for j in items:
-            if not j.is_human:
+            if humans or not j.is_human:
                 out.setdefault((j.type.value, j.subject), j)
         return out
 
-    cand, ref = index(candidate), index(reference)
+    cand, ref = index(candidate, False), index(reference, reference_humans)
     results = []
     for kind in JudgmentType:
         ref_keys = sorted(s for t, s in ref if t == kind.value)

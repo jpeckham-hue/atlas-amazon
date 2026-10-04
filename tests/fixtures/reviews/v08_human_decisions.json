@@ -1,27 +1,122 @@
 {
-  "reviewer": null,
-  "decided_at": null,
+  "reviewer": "Jeff Peckham",
+  "decided_at": "2026-10-04T06:38:08+00:00",
   "marketplace": "US",
   "instructions": "For each entry set 'decision' to the reference answer (same shape as 'fixture'), or leave it null to keep the fixture. Every decision needs a 'rationale'. Set 'reviewer' and 'decided_at' (ISO 8601 with offset). Then regenerate: ATLAS_REGEN_EXAMPLES=1 pytest tests/test_v08_calibration.py",
   "decisions": [
-    {"scenario": "book_cozy_mystery", "type": "relevance", "subject": "harbor town",
-     "fixture": {"score": 0.2}, "proposed": {"score": 0.4}, "decision": null, "rationale": null},
-    {"scenario": "book_cozy_mystery", "type": "relevance", "subject": "small town",
-     "fixture": {"score": 0.3}, "proposed": null, "decision": null, "rationale": null},
-    {"scenario": "book_cozy_mystery", "type": "relevance", "subject": "mystery books",
-     "fixture": {"score": 0.6}, "proposed": null, "decision": null, "rationale": null},
-    {"scenario": "book_cozy_mystery", "type": "relevance", "subject": "amateur sleuth",
-     "fixture": {"score": 0.8}, "proposed": null, "decision": null, "rationale": null},
-    {"scenario": "book_cozy_mystery", "type": "intent", "subject": "small town mystery",
-     "fixture": {"label": "commercial_investigation", "score": 0.7}, "proposed": null,
-     "decision": null, "rationale": null},
-    {"scenario": "book_cozy_mystery", "type": "intent", "subject": "cozy mystery books",
-     "fixture": {"label": "transactional", "score": 0.85}, "proposed": null,
-     "decision": null, "rationale": null},
-    {"scenario": "physical_water_bottle", "type": "intent", "subject": "bottle water",
-     "fixture": {"label": "transactional", "score": 0.8}, "proposed": null,
-     "decision": null, "rationale": null},
-    {"scenario": "physical_water_bottle", "type": "relevance", "subject": "stainless steel",
-     "fixture": {"score": 0.55}, "proposed": {"score": 0.65}, "decision": null, "rationale": null}
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "relevance",
+      "subject": "harbor town",
+      "fixture": {
+        "score": 0.2
+      },
+      "proposed": {
+        "score": 0.4
+      },
+      "decision": {
+        "score": 0.4
+      },
+      "rationale": "The harbor setting is genuinely central to the book, so the old 0.2 fixture underrates relevance. However, 'harbor town' alone is a generic setting phrase rather than a strong book-shopping query, so relevance should remain moderate rather than high."
+    },
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "relevance",
+      "subject": "small town",
+      "fixture": {
+        "score": 0.3
+      },
+      "proposed": null,
+      "decision": {
+        "score": 0.3
+      },
+      "rationale": "'Small town' is relevant only as part of the more specific seed 'small town mystery.' On its own it is a generic setting phrase, is not stated in the listing text, and is not a strong book-shopping query, so the existing 0.3 relevance score should remain."
+    },
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "relevance",
+      "subject": "mystery books",
+      "fixture": {
+        "score": 0.6
+      },
+      "proposed": null,
+      "decision": {
+        "score": 0.6
+      },
+      "rationale": "Broad parent category."
+    },
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "relevance",
+      "subject": "amateur sleuth",
+      "fixture": {
+        "score": 0.8
+      },
+      "proposed": null,
+      "decision": {
+        "score": 0.7
+      },
+      "rationale": "The book clearly supports an amateur-sleuth protagonist, so the keyword is strongly relevant. However, it is still a generic trope/subgenre term rather than a uniquely defining phrase, so 0.7 is a better calibrated score than 0.8."
+    },
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "intent",
+      "subject": "small town mystery",
+      "fixture": {
+        "label": "commercial_investigation",
+        "score": 0.7
+      },
+      "proposed": null,
+      "decision": {
+        "label": "commercial_investigation",
+        "score": 0.7
+      },
+      "rationale": "Subgenre browsing."
+    },
+    {
+      "scenario": "book_cozy_mystery",
+      "type": "intent",
+      "subject": "cozy mystery books",
+      "fixture": {
+        "label": "transactional",
+        "score": 0.85
+      },
+      "proposed": null,
+      "decision": {
+        "label": "transactional",
+        "score": 0.85
+      },
+      "rationale": "Looking for books to buy."
+    },
+    {
+      "scenario": "physical_water_bottle",
+      "type": "intent",
+      "subject": "bottle water",
+      "fixture": {
+        "label": "transactional",
+        "score": 0.8
+      },
+      "proposed": null,
+      "decision": {
+        "label": "transactional",
+        "score": 0.8
+      },
+      "rationale": "Buying bottled water."
+    },
+    {
+      "scenario": "physical_water_bottle",
+      "type": "relevance",
+      "subject": "stainless steel",
+      "fixture": {
+        "score": 0.55
+      },
+      "proposed": {
+        "score": 0.65
+      },
+      "decision": {
+        "score": 0.65
+      },
+      "rationale": "Description states stainless steel bottle, so material matches, but keyword is generic without a product type."
+    }
   ]
 }
