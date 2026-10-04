@@ -1,6 +1,6 @@
 # Research report: The Quiet Harbor
 
-- Run: `run-book-001` at 2026-10-03T09:00:00+00:00 (atlas 0.9.0)
+- Run: `run-book-001` at 2026-10-03T09:00:00+00:00 (atlas 0.10.0)
 - Recipe: `book` 0.2.0 (amazon-base > book), marketplace US
 - Seeds (seed_keywords attribute): cozy mystery, small town mystery
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=human

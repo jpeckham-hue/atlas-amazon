@@ -35,6 +35,23 @@ class CatalogProvider(Protocol):
 
 
 @runtime_checkable
+class CatalogSearchProvider(Protocol):
+    """Catalog items matching keyword queries (market data, not demand).
+
+    Kinds: `catalog_search` (one per query: the returned ASINs in order) and
+    `catalog_item` (one per returned item). The returned order is the catalog's,
+    not shopper search rank, and carries no search volume.
+    """
+
+    name: str
+    is_live: bool
+
+    def search(
+        self, keywords: Sequence[str], *, marketplace: str, run_id: str | None = None
+    ) -> list[Evidence]: ...
+
+
+@runtime_checkable
 class KeywordDataProvider(Protocol):
     """Search volume and competition metrics for keywords. Kind: `keyword_metric`."""
 

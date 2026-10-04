@@ -88,6 +88,7 @@ from atlas_amazon.planner.support import (
 )
 from atlas_amazon.providers.base import (
     CatalogProvider,
+    CatalogSearchProvider,
     JudgmentProvider,
     KeywordDataProvider,
     ReviewProvider,
@@ -114,6 +115,8 @@ class ResearchProviders:
     review_themes: ReviewThemeProvider | None = None
     judgments: JudgmentProvider | None = None
     human_judgments: JudgmentProvider | None = None  # reviewer overrides (provider "human")
+    # Live market data: catalog items for the seed keywords (competitor discovery only).
+    catalog_search: CatalogSearchProvider | None = None
 
     def names(self) -> dict[str, str | None]:
         return {
@@ -127,7 +130,7 @@ class ResearchProviders:
                 ("judgments", self.judgments),
                 ("human_judgments", self.human_judgments),
             )
-        }
+        } | ({"catalog_search": self.catalog_search.name} if self.catalog_search else {})
 
 
 @dataclass(frozen=True, slots=True)
@@ -780,8 +783,16 @@ class ResearchRun:
 
         judgment_evidence = ctx.stored(EvidenceKind.JUDGMENT)
         call_evidence = ctx.stored(EvidenceKind.SEMANTIC_CALL)
+        searches = ctx.stored(EvidenceKind.CATALOG_SEARCH)
         all_evidence = (
-            suggestions + catalog + metrics + reviews + themes + judgment_evidence + call_evidence
+            suggestions
+            + catalog
+            + metrics
+            + reviews
+            + themes
+            + judgment_evidence
+            + call_evidence
+            + searches
         )
         metric_keys = {keyword_key(str(m.payload.get("keyword", m.subject or ""))) for m in metrics}
         summary = EvidenceSummary(

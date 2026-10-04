@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.9: intent calibration.** `ResearchRun` answers
+> Status: **v0.10: first read-only market-data adapter.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
 > for a book or a product listing, from fixture data, with every number
 > traced to evidence. Semantic judgments (relevance, intent, entity,
@@ -17,7 +17,19 @@ into its parts.
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
 >
-> New in v0.9 (offline, no live spend): the prompt separates intent (what the
+> New in v0.10: an adapter for the official, read-only SP-API Catalog Items
+> search (`providers/sp_api/`). It turns catalog responses into `catalog_item`
+> and `catalog_search` Evidence (with the raw response, request URL and
+> marketplace), records and replays them exactly, enforces a hard per-run
+> call cap, and feeds discovered listings into the run as **competitor
+> evidence only**, never demand. Keywords the market makes tempting but the
+> product does not support stay blocked. Everything is tested offline
+> ([docs/baselines/market_v0.10_synthetic.md](docs/baselines/market_v0.10_synthetic.md)
+> shows the comparison on synthetic responses); the 4-call live slice
+> (`scripts/record_live_market.py`) has not run because no SP-API
+> credentials are provisioned yet.
+>
+> In v0.9 (offline, no live spend): the prompt separates intent (what the
 > shopper is trying to do) from relevance (whether that matches this product);
 > intent-risk signals (genre browsing, comparison shopping, generic plurals,
 > reordered product phrases, informational labels without a question) send
@@ -111,8 +123,9 @@ into its parts.
 > families, review themes, record/replay (CI stays offline), hard call and
 > cost limits, human overrides and per-type evaluation.
 >
-> There are no live market-data providers, no CLI and no publishing yet.
-> LLM calls happen only when explicitly enabled.
+> There is one read-only market-data provider (SP-API catalog search), no
+> CLI and no publishing or listing writes. LLM and market-data calls happen
+> only when explicitly enabled.
 
 ## Principles
 
@@ -265,6 +278,39 @@ check = validate_proposal(proposal, recipe=recipe, base=listing, evidence=store)
 print("valid:", check.valid, [f.rule_id for f in check.blocking_findings])
 ```
 
+### Live market data (opt-in, read-only)
+
+`SpApiCatalogProvider` (`providers/sp_api/`) searches the Amazon catalog via
+the Selling Partner API (`searchCatalogItems`, 2022-04-01). It needs an SP-API
+application authorized for a seller account with catalog access; credentials
+come only from the environment and are never stored, logged or recorded:
+
+```bash
+export SP_API_LWA_CLIENT_ID=...  SP_API_LWA_CLIENT_SECRET=...  SP_API_REFRESH_TOKEN=...
+export ATLAS_ALLOW_LIVE_MARKET=1
+```
+
+```python
+from atlas_amazon.providers.sp_api import (
+    LiveSpApiTransport,
+    RecordingHttpTransport,
+    SpApiCatalogProvider,
+    render_market_plan,
+)
+
+market = SpApiCatalogProvider(
+    RecordingHttpTransport(LiveSpApiTransport(), ".atlas/market.local.jsonl"),
+    max_calls_per_run=4,
+)
+print(render_market_plan(market.plan(marketplace="US", keywords=["cozy mystery"])))
+result = scenario.with_providers(catalog_search=market).run()
+```
+
+Replay with `ReplayHttpTransport(path)`; tests use `ScriptedHttpTransport`.
+Catalog results are competitor listings, not demand: no search volume,
+conversion or ad data, and catalog order is not search rank. See
+[docs/architecture.md](docs/architecture.md#live-market-data-sp-api-catalog-v010).
+
 ### Live semantic judgments (opt-in)
 
 Live calls are **off by default** and never happen in tests. To run one:
@@ -303,8 +349,12 @@ scenario = load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json").with
     review_themes=LLMReviewThemeProvider(live, ledger=ledger, cache=cache),
 )
 run = ResearchRun(
-    product=scenario.product, listing=scenario.listing, recipe_id=scenario.product.recipe_id,
-    run_id=scenario.run_id, providers=scenario.providers, store=InMemoryEvidenceStore(),
+    product=scenario.product,
+    listing=scenario.listing,
+    recipe_id=scenario.product.recipe_id,
+    run_id=scenario.run_id,
+    providers=scenario.providers,
+    store=InMemoryEvidenceStore(),
     started_at=scenario.started_at,
 )
 print(render_plan_markdown(run.plan_semantics()))  # inspect before spending anything
@@ -337,7 +387,8 @@ src/atlas_amazon/
   backend/    hidden-keyword packing
   audit/      deterministic listing audit
   evidence/   identity, serialization, store Protocol, JSONL store
-  providers/  Catalog/KeywordData/Suggestion/Review Protocols + fixture fakes
+  providers/  Catalog/CatalogSearch/KeywordData/Suggestion/Review Protocols,
+              fixture fakes, sp_api/ (read-only SP-API catalog + HTTP record/replay)
   planner/    Proposal + validate_proposal, backend plan, gap recommendations
   judgments/  JudgmentRequest, judgment Evidence contract, parse_judgment
   reviews/    review-theme Evidence, summaries, listing opportunities

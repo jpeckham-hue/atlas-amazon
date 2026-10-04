@@ -82,36 +82,64 @@ class RunContext:
         return self.store.query(run_id=self.run_id, marketplace=self.marketplace, kind=kind)
 
 
+def _market_search(ctx: RunContext, known: set[str]) -> tuple[list[Evidence], str]:
+    """Catalog items for the seed keywords from the market-data provider, if any.
+
+    Discovered items become competitor listings (candidate phrases and coverage
+    shares only; never demand). The product's own ASIN and ASINs already
+    fetched as named competitors are dropped so no listing counts twice.
+    """
+    search = getattr(ctx.providers, "catalog_search", None)
+    if search is None:
+        return [], ""
+    if not ctx.seeds:
+        return [], "; market search skipped: no seed keywords"
+    if ctx.plan_only and search.is_live:
+        return [], "; market search not run while planning (live provider)"
+    own = {ctx.product.asin} | known
+    found = search.search(ctx.seeds, marketplace=ctx.marketplace, run_id=ctx.run_id)
+    kept = [e for e in found if not (e.kind == EvidenceKind.CATALOG_ITEM and e.subject in own)]
+    items = sum(1 for e in kept if e.kind == EvidenceKind.CATALOG_ITEM)
+    return kept, f"; market search of {len(ctx.seeds)} seed keywords found {items} items"
+
+
 def _competitor_catalog(ctx: RunContext, priority: str) -> TaskRecord:
     provider = ctx.providers.catalog
+    search = getattr(ctx.providers, "catalog_search", None)
     asins = ctx.product.competitor_asins
-    if provider is None:
+    if provider is None and search is None:
         return TaskRecord(
             priority,
             "competitor_catalog",
             TaskStatus.NO_PROVIDER,
             note="no catalog provider configured",
         )
-    if not asins:
+    names = tuple(p.name for p in (provider, search) if p is not None)
+    if provider is not None and not asins and search is None:
         return TaskRecord(
             priority,
             "competitor_catalog",
             TaskStatus.NO_INPUT,
-            (provider.name,),
+            names,
             note="no competitor ASINs in the product input",
         )
-    ids, new, reused = ctx.store_all(
-        provider.get_items(asins, marketplace=ctx.marketplace, run_id=ctx.run_id)
+    named: list[Evidence] = []
+    if provider is not None and asins:
+        named = provider.get_items(asins, marketplace=ctx.marketplace, run_id=ctx.run_id)
+    market, market_note = _market_search(ctx, {e.subject for e in named if e.subject})
+    ids, new, reused = ctx.store_all(named + market)
+    note = (f"requested {len(asins)} competitor ASINs" if provider is not None else "") + (
+        market_note
     )
     return TaskRecord(
         priority,
         "competitor_catalog",
         TaskStatus.EXECUTED,
-        (provider.name,),
+        names,
         ids,
         new,
         reused,
-        f"requested {len(asins)} competitor ASINs",
+        note.lstrip("; "),
     )
 
 

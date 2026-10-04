@@ -1296,6 +1296,134 @@ recommendations lose "bpa free" and its backend proposal loses "bpa free",
 "straw" and "kids". Replays and reports of earlier recordings run with
 `semantic_helpers.HISTORICAL` (both fixes off) and stay byte-identical.
 
+## Live market data: SP-API Catalog (v0.10)
+
+### Source selection
+
+One source, chosen for supportable access:
+
+* **Amazon search autocomplete: rejected.** It has no official API, and the
+  Amazon.com Conditions of Use prohibit "data mining, robots, or similar data
+  gathering and extraction tools".
+* **Product Advertising API 5.0: unavailable.** Retired (deprecated
+  2026-04-30; calls now return 403).
+* **SP-API Catalog Items `searchCatalogItems` (2022-04-01): selected.**
+  Official and read-only. Auth is Login with Amazon: a refresh token is
+  exchanged for a one-hour access token sent as `x-amz-access-token` (no
+  SigV4). It needs a registered SP-API application authorized by a seller
+  account with catalog access. Rate limit: 5 requests/s, burst 5. No per-call
+  fee.
+* **What it provides:** for keyword or ASIN queries, the matching catalog items:
+  title (`summaries.itemName`), brand, bullet points (`attributes.bullet_point`),
+  classifications and sales ranks, per marketplace.
+* **What it does not provide:** search volume, conversion, click share or ad
+  competition. The result order is the catalog's, not shopper search rank.
+
+### Provider boundary (`providers/sp_api/catalog.py`)
+
+`SpApiCatalogProvider` implements `CatalogProvider.get_items` (identifier
+search, 20 ASINs per call) and the new `CatalogSearchProvider.search` (one call
+per normalized, de-duplicated keyword query, first page only). It returns only
+`Evidence`; raw dicts never leave the module.
+
+* **`catalog_item`** (subject ASIN): `asin`, `title`, `brand`, `bullets`,
+  `classifications`, `sales_ranks`, `source` and `raw` (the item as returned).
+  The text fields match every other catalog provider, so candidate building
+  and coverage read it unchanged.
+* **`catalog_search`** (subject: the query): `query`, `keywords`,
+  `marketplace_id`, `included_data`, `page_size`, `result_asins` (returned
+  order), `number_of_results`, `raw` (the full response).
+
+Every record carries the provider (`sp-api-catalog`), marketplace, run ID, the
+original response time as `retrieved_at` and the request URL as `source_url`.
+The URL never contains credentials. IDs are content hashes, so replays give
+identical IDs.
+
+The provider handles bad and partial input as follows:
+
+* **Marketplace scoping.** Atlas codes map to an SP-API marketplace ID and
+  regional endpoint (US is `ATVPDKIKX0DER` on the North America endpoint).
+  Items with no summary for that marketplace are skipped, bullets tagged
+  with another marketplace are dropped, and unknown marketplaces are refused.
+* **Duplicates.** An ASIN returned by several queries is recorded once, and
+  the first query wins. It is still listed in each query's `result_asins`.
+* **Failures.** Non-200 responses, malformed bodies, transport errors and
+  replay misses produce no evidence. Each one is listed in
+  `provider.failures` with its reason (for example `http_429 QuotaExceeded`).
+  Nothing is invented.
+
+### Transports, record and replay (`providers/sp_api/http.py`)
+
+* **`LiveSpApiTransport`** is the only networked class.
+  * It is disabled unless `ATLAS_ALLOW_LIVE_MARKET=1` is set; this is
+    separate from the LLM opt-in.
+  * It throttles to 5 requests/s and caches the access token in memory.
+  * It reads `SP_API_LWA_CLIENT_ID`, `SP_API_LWA_CLIENT_SECRET` and
+    `SP_API_REFRESH_TOKEN` from the environment and never stores them.
+* **`RecordingHttpTransport`** appends request and response pairs to a
+  checksummed, secret-scanned JSONL file. Only the request ID and rate-limit
+  headers are kept.
+* **`ReplayHttpTransport`** serves responses by exact request hash and
+  rejects tampered files.
+* **`ScriptedHttpTransport`** is the fake mode used by tests.
+
+CI never sees the network: the tests block sockets.
+
+### Call budget
+
+`max_calls_per_run` is a hard cap on live calls per run ID, checked before
+every call. Calls past the cap are recorded as `call_limit` failures and the
+reason is added to `provider.halts`. Replays are not counted.
+`plan(marketplace=, keywords=, asins=)` returns a `MarketCallPlan` with the
+queries, the call count, the rate-limit assumption, the cap and the cost
+(expected and worst case are both $0.00). `query_limit` trims the query list
+explicitly.
+
+### Research integration (`research/tasks.py`, `research/market.py`)
+
+The optional `ResearchProviders.catalog_search` role runs inside the
+`competitor_catalog` task. It searches the run's seed keywords, and the
+discovered items join the named competitors as competitor listings. They
+feed candidate phrases and competitor-coverage shares only.
+
+* The product's own ASIN, and ASINs already fetched as named competitors,
+  are dropped.
+* Keyword metrics are untouched: new candidates have no demand data and stay
+  unscored on demand.
+* While planning semantic calls, a live market provider is not called.
+* Without the role, runs, reports and fingerprints are unchanged.
+
+`compare_market(baseline, market, store, provider=)` reports the effect of
+market data on a run:
+
+* new candidate keywords;
+* fixture candidates confirmed by, or absent from, market listings;
+* rank changes and recommendation changes;
+* keywords that market data makes tempting but the product does not support.
+  These stay `unsupported_by_product` and are never recommended or packed.
+
+Three questions stay separate: market opportunity (what the catalog shows
+sellers use), product relevance (the semantic judgments) and product truth
+(the seller's own information).
+
+### Live slice (pending access)
+
+`scripts/record_live_market.py` handles the live slice:
+
+* **`--plan`** prints 4 catalog calls: 2 seeds × 2 scenarios, pageSize 10,
+  capped at 2 per scenario, plus one token exchange, for $0.00.
+* **`--check`** verifies credentials with an LWA token exchange and makes no
+  catalog call.
+* **`--run`** records to `tests/fixtures/recordings/live/market_v10/`. It
+  refuses a non-empty directory and stops after an authorization failure.
+
+At release no SP-API credentials existed, so the slice did not run and no
+live recording exists.
+[docs/baselines/market_v0.10_synthetic.md](baselines/market_v0.10_synthetic.md)
+shows the comparison report on clearly labelled synthetic responses. There,
+market listings confirm "bpa free" in 3 of 3 listings, and the keyword stays
+blocked.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -1334,17 +1462,22 @@ recommendations lose "bpa free" and its backend proposal loses "bpa free",
    with decisions that supersede stale fixtures, offline routing-strategy
    comparison, and wording-independent review-theme feature support. No live
    spend.
-10. **v0.9 (this release)**: intent separated from relevance in the prompt,
+10. **v0.9**: intent separated from relevance in the prompt,
     intent-risk escalation, loadable historical prompt versions, and an
     offline routing comparison against the human-reviewed reference.
-11. **Next (recommended)**: semantic calibration is closed. Start the first
-    read-only live market-data adapter (autocomplete or SP-API Catalog) with
-    the same plan / cap / record / replay discipline. Known small items to
-    revisit as data arrives: setting terms just below the 0.7 relevance-risk
-    threshold can still enter the top-N ("small town" at 0.5), the Kindle
-    Unlimited relevance fixture was never human-reviewed, and book format
-    claims ("large print") are not yet support-checked.
-12. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
-   Catalog, Product Type Definitions), LLM copy generation with
+11. **v0.10 (this release)**: the first read-only market-data adapter
+    (SP-API Catalog Items search) with Evidence conversion, record/replay, a
+    hard call cap, competitor-only integration and a market comparison. The
+    live slice waits for SP-API access.
+12. **Next (recommended)**: provision SP-API access and record the 4-call live
+    slice (`scripts/record_live_market.py --run`). Then add one official
+    demand source under the same plan / cap / record / replay discipline,
+    such as Brand Analytics search terms (needs Brand Registry) or the Amazon
+    Ads keyword recommendations, so new catalog candidates can be scored on
+    demand. Known small items: book format claims ("large print") are not
+    support-checked, and setting terms just below the 0.7 relevance-risk
+    threshold can enter the top-N.
+13. **Later**: a minimal CLI, more read-only adapters (Product Type
+   Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.

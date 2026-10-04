@@ -66,6 +66,7 @@ class EvidenceKind(StrEnum):
     REVIEW_THEME = "review_theme"
     JUDGMENT = "judgment"
     SEMANTIC_CALL = "semantic_call"
+    CATALOG_SEARCH = "catalog_search"  # one catalog keyword query and its returned ASINs
 
 
 @dataclass(frozen=True, slots=True)
