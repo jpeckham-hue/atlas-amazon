@@ -128,6 +128,7 @@ def strategy_cost(
     strong_types: Collection[JudgmentType] = (),
     tiers: ModelTiers | None = None,
     policy: EscalationPolicy | None = None,
+    prompt_version: str | None = None,
 ) -> StrategyCost:
     """Planner prices for one strategy over the given stages' model requests."""
     provider = BatchedJudgmentProvider(
@@ -135,6 +136,7 @@ def strategy_cost(
         tiers=tiers,
         escalation=policy or EscalationPolicy(),
         strong_types=strong_types,
+        prompt_version=prompt_version,
     )
     escalated = {(t, s) for t, s, _ in outcome.escalated}
     fast_calls = strong_calls = 0

@@ -144,7 +144,7 @@ class TestHashesAndCache:
             "sha256:old", {"tier": "fast", "items": [], "request": {}, "response": {}}
         )
         cache.put(stale, "old-fingerprint", {"structured": {}, "exchange": "sha256:old"})
-        assert p.template.version == "judgment_batch-v2"
+        assert p.template.version == "judgment_batch-v3"
         assert p.plan([request]).cache_hits == 0
 
 

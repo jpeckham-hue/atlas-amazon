@@ -158,6 +158,7 @@ class BatchedJudgmentProvider:
         name: str = "anthropic",
         evaluation: str | None = None,
         strong_types: Collection[JudgmentType | str] = (),
+        prompt_version: str | None = None,
     ) -> None:
         """`evaluation="strong_only"` is a benchmarking mode, never a production path:
         every item goes to the strong tier, nothing escalates, and the provider
@@ -181,7 +182,8 @@ class BatchedJudgmentProvider:
         self.escalation = escalation if escalation is not None else EscalationPolicy()
         self.usage = ledger or UsageLedger()
         self.cache = cache
-        self.template = load_template(JUDGMENT_BATCH)
+        # None: the current prompt. A historical version replays old recordings.
+        self.template = load_template(JUDGMENT_BATCH, prompt_version)
         self.plans: list[tuple[str | None, SemanticCallPlan]] = []
         self.failures: list[tuple[str, str]] = []  # (purpose:item_id, outcome)
         self.escalation_events: list[EscalationEvent] = []

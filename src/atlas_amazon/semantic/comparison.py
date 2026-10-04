@@ -71,6 +71,7 @@ def run_strong_comparison(
     batching: BatchSettings | None = None,
     cache: SemanticCache | None = None,
     types: Sequence[JudgmentType] = KEYWORD_TYPES,
+    prompt_version: str | None = None,
 ) -> TierComparison:
     requests = comparison_requests(production, provider=provider, types=types)
     evaluator = BatchedJudgmentProvider(
@@ -81,6 +82,7 @@ def run_strong_comparison(
         cache=cache,
         name=STRONG_EVAL_PROVIDER,
         evaluation=STRONG_ONLY,
+        prompt_version=prompt_version,
     )
     evidence = evaluator.judge(requests, marketplace=marketplace, run_id=run_id)
     wanted = {r.input_hash for r in requests}

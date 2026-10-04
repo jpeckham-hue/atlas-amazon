@@ -18,7 +18,12 @@ from atlas_amazon.semantic import (
     find_secrets,
     load_template,
 )
-from atlas_amazon.semantic.prompts import TEMPLATE_NAMES, PromptError, load_lock
+from atlas_amazon.semantic.prompts import (
+    TEMPLATE_NAMES,
+    PromptError,
+    historical_templates,
+    load_lock,
+)
 from atlas_amazon.semantic.records import ChecksummedJsonl, RecordFileError
 from atlas_amazon.semantic.usage import UsageRecord, estimate_tokens
 
@@ -34,8 +39,21 @@ class TestPrompts:
             f"{name}.toml changed without a version bump: bump `version` and update lock.json"
         )
 
+    def test_historical_versions_stay_locked_and_loadable(self):
+        lock = load_lock()
+        history = historical_templates()
+        assert history  # bumped templates keep their previous version
+        for template in history:
+            assert lock[template.version] == template.fingerprint, (
+                f"history/{template.version}.toml must not change"
+            )
+            assert load_template(template.name, template.version) == template
+        with pytest.raises(PromptError):
+            load_template("judgment_batch", "judgment_batch-v0")
+
     def test_lock_has_no_orphans(self):
         versions = {load_template(n).version for n in TEMPLATE_NAMES}
+        versions |= {t.version for t in historical_templates()}
         assert set(load_lock()) == versions
 
     def test_fingerprint_covers_text_and_schema(self):

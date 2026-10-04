@@ -188,7 +188,7 @@ class TestBatchedJudgments:
         for request in keyword_requests():
             j = by_subject(judgments)[(request.type.value, request.subject)]
             assert j.input_hash == request.input_hash
-            assert j.prompt_version == "judgment_batch-v2" and j.model == FAST.model
+            assert j.prompt_version == "judgment_batch-v3" and j.model == FAST.model
             assert j.rationale and j.confidence == 0.9
             assert j.call["call_evidence_id"] == call.id and j.call["tier"] == "fast"
             assert j.call["batch"] == {"item_id": item_id(request), "items": 9}

@@ -15,8 +15,8 @@ Regenerate with `ATLAS_REGEN_EXAMPLES=1 pytest tests/test_benchmark.py`.
 
 | Scenario | v0.4b expected | v0.5 expected (recorded) | v0.5 expected (plan) | v0.4b worst case | v0.5 worst case (recorded) | v0.5 worst case (plan) |
 |---|---|---|---|---|---|---|
-| book_cozy_mystery | $0.0966 | $0.0238 | $0.0238 | $3.6663 | $0.0667 | $0.0846 |
-| physical_water_bottle | $0.1395 | $0.0286 | $0.0302 | $5.2554 | $0.0814 | $0.0977 |
+| book_cozy_mystery | $0.0966 | $0.0248 | $0.0243 | $3.6663 | $0.0678 | $0.0856 |
+| physical_water_bottle | $0.1395 | $0.0298 | $0.0308 | $5.2554 | $0.0826 | $0.0990 |
 
 The plan's worst case includes the escalation reserve (strong-tier calls the policy could add up to its cap); the recorded worst case prices only the calls that were made, each at its full `max_tokens`.
 

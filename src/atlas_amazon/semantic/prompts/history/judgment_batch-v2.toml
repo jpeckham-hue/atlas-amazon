@@ -1,5 +1,5 @@
 name = "judgment_batch"
-version = "judgment_batch-v3"
+version = "judgment_batch-v2"
 # Hard cap. The actual max_tokens of a batch request is computed from the
 # items it contains (see semantic/budgets.py) and never exceeds this.
 max_tokens = 8192
@@ -30,28 +30,19 @@ type "relevance": how relevant the keyword is to the product in its context.
 - 0.0-0.2: a different product, a competitor's brand, or a non-shopping query.
 Judge only from the context. A keyword naming a feature, setting or element
 the context states (in the title, subtitle, features or description) is
-relevant to this product. A query for a different product scores low here,
-however clear its purchase intent.
+relevant to this product.
 
-type "intent": what the shopper is trying to do, whatever product they mean.
-Intent is judged without regard to this product; whether the query matches
-this product is relevance, judged separately. A query can be clearly
-transactional and still irrelevant to this product: "bottle water" is a
-shopper buying bottled water (transactional), even though its relevance to a
-reusable water bottle is low. "label" is one of:
+type "intent": the search intent behind the keyword. "label" is one of:
 - transactional: ready to buy a specific kind of item.
 - commercial_investigation: comparing or browsing options.
-- informational: wants information, not a product (how, why, ideas,
-  meaning). A purchase of some other product is not informational.
+- informational: wants information, not a product.
 - navigational: looking for a specific brand, store, or listing.
 "score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
 ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
 A broad category or genre on its own (for example "running shoes") is usually
 commercial_investigation, and so is a bare attribute (for example
 "waterproof"); transactional fits specific queries such as "mens trail
-running shoes size 10". Genre and subgenre searches (for example "small town
-mystery", "space opera") are commercial_investigation unless they name a
-specific title, author, edition or product.
+running shoes size 10".
 
 type "entity": does the keyword name an entity the seller may not use in their
 own listing or backend keywords? "label" is one of:

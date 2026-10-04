@@ -12,7 +12,13 @@ The JSON output schema for each name is defined here in code, derived from
 the judgment contract, and is part of the template fingerprint.
 
 **Version discipline**: `prompts/lock.json` pins the sha256 of every
-version (system + user + schema + max_tokens). Changing a template or its
+version (system + user + schema + max_tokens), current and historical.
+
+**Historical versions** stay loadable for replay: when a template is bumped,
+its previous file is kept verbatim as `prompts/history/<version>.toml`, and
+`load_template(name, version)` returns it. Recordings made with an older
+prompt therefore still replay exactly (their request hashes include the
+prompt text). Changing a template or its
 schema without bumping `version` fails `tests/test_semantic_prompts.py`,
 so a recorded or cached result can never silently refer to different
 wording. Cache entries also store the fingerprint and are treated as stale
@@ -140,16 +146,31 @@ def _prompt_dir():
     return resources.files("atlas_amazon.semantic").joinpath("prompts")
 
 
-def load_template(name: str) -> PromptTemplate:
-    path = _prompt_dir().joinpath(f"{name}.toml")
+def _template_path(name: str, version: str | None):
+    current = _prompt_dir().joinpath(f"{name}.toml")
+    if version is None:
+        return current
+    if (
+        current.is_file()
+        and tomllib.loads(current.read_text(encoding="utf-8")).get("version") == version
+    ):
+        return current
+    return _prompt_dir().joinpath("history").joinpath(f"{version}.toml")
+
+
+def load_template(name: str, version: str | None = None) -> PromptTemplate:
+    """The current template, or a historical `version` kept in prompts/history/."""
+    path = _template_path(name, version)
     if not path.is_file():
-        raise PromptError(f"no prompt template for {name!r}")
+        raise PromptError(f"no prompt template for {name!r}" + (f" {version}" if version else ""))
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     expected = {"name", "version", "max_tokens", "system", "user"}
     if set(data) != expected:
         raise PromptError(f"{name}.toml must define exactly {sorted(expected)}")
     if data["name"] != name or name not in OUTPUT_SCHEMAS:
         raise PromptError(f"{name}.toml has name {data['name']!r}")
+    if version is not None and data["version"] != version:
+        raise PromptError(f"{path.name} holds version {data['version']!r}, not {version!r}")
     if not data["version"].startswith(f"{name}-") or data["user"].count(PLACEHOLDER) != 1:
         raise PromptError(
             f"{name}.toml: version must start with '{name}-' and user must "
@@ -170,3 +191,17 @@ def load_lock() -> dict[str, str]:
 
 
 TEMPLATE_NAMES = tuple(OUTPUT_SCHEMAS)
+
+
+def historical_templates() -> list[PromptTemplate]:
+    """Every archived template version in prompts/history/."""
+    history = _prompt_dir().joinpath("history")
+    if not history.is_dir():
+        return []
+    out = []
+    for entry in sorted(history.iterdir(), key=lambda e: e.name):
+        if entry.name.endswith(".toml"):
+            version = entry.name[: -len(".toml")]
+            name = next(n for n in TEMPLATE_NAMES if version.startswith(f"{n}-"))
+            out.append(load_template(name, version))
+    return out

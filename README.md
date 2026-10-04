@@ -9,7 +9,7 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.8: relevance calibration and human-grounded review.** `ResearchRun` answers
+> Status: **v0.9: intent calibration.** `ResearchRun` answers
 > "which keywords matter, what am I missing, why, and what should change?"
 > for a book or a product listing, from fixture data, with every number
 > traced to evidence. Semantic judgments (relevance, intent, entity,
@@ -17,7 +17,17 @@ into its parts.
 > (opt-in, official Anthropic SDK) or from a human reviewer, and every one
 > is recorded as hashed, versioned Evidence.
 >
-> New in v0.8 (offline, no live spend): relevance-risk signals (setting,
+> New in v0.9 (offline, no live spend): the prompt separates intent (what the
+> shopper is trying to do) from relevance (whether that matches this product);
+> intent-risk signals (genre browsing, comparison shopping, generic plurals,
+> reordered product phrases, informational labels without a question) send
+> suspect intent labels for a second opinion; older prompt versions stay
+> loadable so earlier recordings still replay. Against the human-reviewed
+> reference, intent-risk escalation raises book intent agreement from 3/4 to
+> 4/4 with no other change; see
+> [docs/baselines/intent_v0.9.md](docs/baselines/intent_v0.9.md).
+>
+> In v0.8 (offline, no live spend): relevance-risk signals (setting,
 > broad-category, generic and description-only terms) send over-rated
 > relevance to the strong tier; a review queue and decision file let a human
 > supersede stale fixture judgments without deleting any history; routing

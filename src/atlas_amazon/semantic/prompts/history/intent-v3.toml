@@ -1,16 +1,12 @@
 name = "intent"
-version = "intent-v4"
+version = "intent-v3"
 max_tokens = 256
 system = """
 You classify the search intent behind Amazon shopper queries. You use only the
 keyword and the product context provided.
 """
 user = """
-Classify the search intent of the keyword in the input: what the shopper is
-trying to do, whatever product they mean. Do not judge whether the keyword
-matches the product in the context (that is relevance, judged separately): a
-query can be clearly transactional and still be about a different product, as
-"bottle water" is a shopper buying bottled water.
+Classify the search intent of the keyword in the input.
 
 "label" is one of:
 - transactional: the shopper is ready to buy a specific kind of item.
@@ -20,10 +16,8 @@ query can be clearly transactional and still be about a different product, as
 
 "score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
 ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
-A broad category or genre on its own (for example "running shoes"), a genre or
-subgenre search (for example "small town mystery") or a bare attribute (for
-example "waterproof") is usually commercial_investigation. Informational is
-only for queries seeking information, not for purchases of other products.
+A broad category or genre on its own (for example "running shoes") or a bare
+attribute (for example "waterproof") is usually commercial_investigation.
 Set "confidence" (0 to 1) and give a "rationale" of at most 25 words.
 
 <input>

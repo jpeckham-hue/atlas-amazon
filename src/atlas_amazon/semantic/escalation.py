@@ -44,6 +44,22 @@ listed in the detail; the first one is the recorded reason.
   listing description alone, none from the title, subtitle, features, seeds,
   brand or author.
 
+Intent-risk signals (v0.9), when the label contradicts the keyword's shape.
+Intent is what the shopper is trying to do, independent of this product;
+these send the judgment for a second opinion and never rewrite the label:
+
+* `genre_browse`: `transactional` for a genre or subgenre search ("small
+  town mystery"): browsing unless a specific title or edition is named.
+* `comparison_shopping`: `transactional` for a query with comparison words
+  ("best", "vs", "top rated", "review").
+* `generic_plural`: `transactional` for a short generic plural ("water
+  bottles") with no attribute, size or number.
+* `reordered_product_phrase`: not `transactional` for a seed's words with a
+  different head noun ("bottle water" vs the seed "water bottle"): a
+  different product, but still a purchase.
+* `informational_without_question`: `informational` for a query with no
+  information-seeking word (how, why, guide, ideas, ...).
+
 Recipe entities (for example KDP program names) never reach the model: the
 deterministic rules answer them first, so they cannot conflict.
 
@@ -72,7 +88,13 @@ from atlas_amazon.semantic import batch
 CONNECTORS = frozenset({"for", "with", "of", "in", "to", "on"})
 
 
-SETTING_WORDS = frozenset(
+# Compared with plural-folded head nouns, so folded the same way
+# (fold_plural maps 'mystery' and 'mysteries' to one key).
+def _folded(words: set[str]) -> frozenset[str]:
+    return frozenset(fold_plural(w) for w in words)
+
+
+SETTING_WORDS = _folded(
     {
         "town",
         "city",
@@ -103,7 +125,9 @@ SETTING_WORDS = frozenset(
         "home",
     }
 )
-BROAD_CATEGORY_WORDS = frozenset(
+# Compared with plural-folded head nouns, so folded the same way
+# (fold_plural maps 'mystery' and 'mysteries' to one key).
+BROAD_CATEGORY_WORDS = _folded(
     {
         "book",
         "novel",
@@ -127,6 +151,66 @@ BROAD_CATEGORY_WORDS = frozenset(
 )
 
 
+# Compared with plural-folded head nouns, so folded the same way
+# (fold_plural maps 'mystery' and 'mysteries' to one key).
+GENRE_WORDS = _folded(
+    {
+        "mystery",
+        "thriller",
+        "romance",
+        "fantasy",
+        "horror",
+        "western",
+        "memoir",
+        "biography",
+        "poetry",
+        "suspense",
+        "scifi",
+        "dystopian",
+        "saga",
+        "opera",
+        "fiction",
+    }
+)
+COMPARISON_WORDS = frozenset(
+    {
+        "best",
+        "top",
+        "vs",
+        "versus",
+        "compare",
+        "comparison",
+        "review",
+        "reviews",
+        "rated",
+        "alternative",
+        "alternatives",
+        "cheapest",
+    }
+)
+INFORMATIONAL_WORDS = frozenset(
+    {
+        "how",
+        "what",
+        "why",
+        "when",
+        "where",
+        "who",
+        "which",
+        "guide",
+        "tips",
+        "ideas",
+        "meaning",
+        "definition",
+        "history",
+        "tutorial",
+        "diy",
+        "difference",
+        "explained",
+    }
+)
+
+
 class EscalationReason(StrEnum):
     FAILED = "failed"
     FEATURE_UNDERRATED = "feature_underrated"
@@ -139,6 +223,11 @@ class EscalationReason(StrEnum):
     BROAD_CATEGORY = "broad_category"
     GENERIC_HEAD_TERM = "generic_head_term"
     INCIDENTAL_DESCRIPTION_SUPPORT = "incidental_description_support"
+    GENRE_BROWSE = "genre_browse"
+    COMPARISON_SHOPPING = "comparison_shopping"
+    GENERIC_PLURAL = "generic_plural"
+    REORDERED_PRODUCT_PHRASE = "reordered_product_phrase"
+    INFORMATIONAL_WITHOUT_QUESTION = "informational_without_question"
 
 
 # Item outcomes that mean the model answered badly (worth a second opinion).
@@ -264,6 +353,51 @@ def relevance_risks(keyword: str, context: Mapping[str, Any]) -> list[tuple[Esca
     return risks
 
 
+def intent_risks(
+    keyword: str, label: str, context: Mapping[str, Any]
+) -> list[tuple[EscalationReason, str]]:
+    """Deterministic reasons an intent `label` for `keyword` deserves a second opinion."""
+    risks: list[tuple[EscalationReason, str]] = []
+    tokens = [t for t in tokenize(keyword) if t not in EDGE_STOPWORDS]
+    words = [fold_plural(t) for t in tokens]
+    if not words:
+        return risks
+    head = head_noun(keyword)
+    specific = any(t.isdigit() or t in UNIT_WORDS for t in tokens)
+    if label == "transactional":
+        if head in GENRE_WORDS and not specific:
+            risks.append(
+                (EscalationReason.GENRE_BROWSE, f"genre/subgenre search headed by '{head}'")
+            )
+        found = [t for t in tokens if t in COMPARISON_WORDS]
+        if found:
+            risks.append((EscalationReason.COMPARISON_SHOPPING, f"comparison words {found}"))
+        last = tokens[-1]
+        if (
+            len(words) <= 2
+            and last != fold_plural(last)
+            and not specific
+            and _block_reason(tokens[:-1]) is None
+        ):
+            risks.append((EscalationReason.GENERIC_PLURAL, f"generic plural '{keyword}'"))
+    else:
+        for seed in context.get("seeds", ()):
+            if sorted(words) == sorted(_content(str(seed))) and head != head_noun(str(seed)):
+                risks.append(
+                    (
+                        EscalationReason.REORDERED_PRODUCT_PHRASE,
+                        f"seed '{seed}' reordered to head noun '{head}': a different "
+                        f"product, still a purchase",
+                    )
+                )
+                break
+        if label == "informational" and not set(tokens) & INFORMATIONAL_WORDS:
+            risks.append(
+                (EscalationReason.INFORMATIONAL_WITHOUT_QUESTION, "no information-seeking word")
+            )
+    return risks
+
+
 @dataclass(frozen=True, slots=True)
 class EscalationPolicy:
     enabled: bool = True
@@ -277,6 +411,7 @@ class EscalationPolicy:
     weak_lexical_gap: float = 0.35
     relevance_risks: bool = True
     relevance_risk_min: float = 0.7
+    intent_risks: bool = True
     max_escalations: int | None = 12
     # Planning assumption only: share of live items expected to escalate.
     expected_rate: float = 0.15
@@ -364,13 +499,19 @@ class EscalationPolicy:
                         risks[0][0],
                         f"score {score:g} >= {self.relevance_risk_min:g}; {detail} ({conf})",
                     )
-        elif request.type is JudgmentType.INTENT and self.intent_structure:
-            shape = _structure(keyword, context)
-            if shape is not None and structured.get("label") == "transactional":
+        elif request.type is JudgmentType.INTENT:
+            label = str(structured.get("label"))
+            shape = _structure(keyword, context) if self.intent_structure else None
+            if shape is not None and label == "transactional":
                 return (
                     EscalationReason.INTENT_STRUCTURE,
                     f"'transactional' for a {shape} ({conf})",
                 )
+            if self.intent_risks:
+                risks = intent_risks(keyword, label, context)
+                if risks:
+                    detail = "; ".join(f"{r.value}: {d}" for r, d in risks)
+                    return risks[0][0], f"label '{label}'; {detail} ({conf})"
         elif request.type is JudgmentType.ENTITY and self.entity_conflicts:
             label, entity = structured.get("label"), structured.get("entity") or ""
             if label in BLOCKING_ENTITY_LABELS and entity:

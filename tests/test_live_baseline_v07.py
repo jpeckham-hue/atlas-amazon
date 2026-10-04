@@ -67,8 +67,10 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", refuse)
 
 
-# The policy these recordings were made with: v0.8 added relevance-risk signals.
-V07_POLICY = EscalationPolicy(relevance_risks=False)
+# The prompt and policy these recordings were made with (v0.8 added
+# relevance-risk signals, v0.9 intent-risk signals and prompt judgment_batch-v3).
+V07_POLICY = EscalationPolicy(relevance_risks=False, intent_risks=False)
+V07_PROMPT = "judgment_batch-v2"
 
 
 def replay(name, ledger=None):
@@ -77,7 +79,9 @@ def replay(name, ledger=None):
     return (
         load_scenario(SCENARIOS / f"{name}.json")
         .with_providers(
-            judgments=BatchedJudgmentProvider(transport, ledger=ledger, escalation=V07_POLICY),
+            judgments=BatchedJudgmentProvider(
+                transport, ledger=ledger, escalation=V07_POLICY, prompt_version=V07_PROMPT
+            ),
             review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
         )
         .run()
@@ -91,6 +95,7 @@ def comparison(name, result):
         marketplace=result.metadata.marketplace,
         run_id=result.metadata.run_id,
         types=COMPARED,
+        prompt_version=V07_PROMPT,
     )
 
 

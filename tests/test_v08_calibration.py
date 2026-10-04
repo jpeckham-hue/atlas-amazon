@@ -45,8 +45,11 @@ from atlas_amazon.semantic.tiers import FAST, STRONG
 from conftest import T0
 from semantic_helpers import RECORDINGS, SCENARIOS
 from test_examples import ROOT, check
-from test_live_baseline_v07 import V07_POLICY, comparison, replay
+from test_live_baseline_v07 import V07_POLICY, V07_PROMPT, comparison, replay
 from test_semantic_batch import batch_transport, items_of, judge
+
+# The v0.8 report evaluates v0.8's signals (v0.9 added intent-risk signals).
+V08_POLICY = EscalationPolicy(intent_risks=False)
 
 REVIEWS = SCENARIOS.parent / "reviews"
 V07 = RECORDINGS / "live" / "v07"
@@ -329,7 +332,7 @@ def _scenario_data(name):
     evidence = {r.evidence.id: r.evidence for r in recorded}
     evidence.update({e.id: e for e in comp.evidence if e.kind == EvidenceKind.JUDGMENT})
     strong_pool = list(comp.strong) + prod_strong
-    policy = EscalationPolicy()
+    policy = V08_POLICY
     strategies = {
         "v0.7 production (actual)": None,
         "A: risk escalation (v0.8 signals)": simulate_strategy(
@@ -367,6 +370,9 @@ def _scenario_data(name):
         "results": results,
         "stages": stages,
         "context": context(name),
+        "evidence": evidence,
+        "strong_pool": strong_pool,
+        "scenario": sc,
     }
 
 
@@ -517,7 +523,13 @@ def render_calibration(data) -> str:
                 )
                 continue
             strong_types = {JudgmentType.RELEVANCE} if label.startswith("B") else set()
-            cost = strategy_cost(d["stages"], outcome, strong_types=strong_types)
+            cost = strategy_cost(
+                d["stages"],
+                outcome,
+                strong_types=strong_types,
+                policy=V08_POLICY,
+                prompt_version=V07_PROMPT,
+            )
             out.append(
                 f"| {name} | {label} | {cost.planned_calls} ({cost.fast_calls} / "
                 f"{cost.strong_calls}) | {outcome.strong_items} | "
@@ -634,5 +646,6 @@ def test_review_artifact_is_current(data):
 
 
 def test_v07_replay_policy_pin_is_the_v07_behavior():
-    assert V07_POLICY.relevance_risks is False
+    assert V07_POLICY.relevance_risks is False and V07_POLICY.intent_risks is False
+    assert V08_POLICY.relevance_risks is True and V08_POLICY.intent_risks is False
     assert UsageLedger is not None

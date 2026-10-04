@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.8), `·` = planned.
+`✓` = exists (v0.9), `·` = planned.
 
 ```
 atlas-amazon/
@@ -109,6 +109,7 @@ atlas-amazon/
 │   │   └── context.py             ✓ first-party product context for judgments (v0.7)
 │   ├── semantic/
 │   │   ├── prompts/*.toml         ✓ versioned prompt templates + lock.json fingerprints
+│   │   ├── prompts/history/       ✓ archived prompt versions, loadable for replay
 │   │   ├── batched.py             ✓ BatchedJudgmentProvider (v0.5 default): batch, escalate
 │   │   ├── batch.py               ✓ item IDs, batch prompt input, per-item response parsing
 │   │   ├── tiers.py               ✓ LLMSettings, fast / strong model tiers
@@ -1163,6 +1164,61 @@ phrase, when it shares two distinctive words with the theme label and terms
 recurring across the theme's supporting reviews. Support is still always a
 verbatim seller feature; review words alone never create it.
 
+## Intent calibration (v0.9)
+
+All offline; no live calls were made in v0.9.
+
+### Intent separated from relevance (prompts)
+
+`judgment_batch-v3` and `intent-v4` state that intent is what the shopper is
+trying to do, judged without regard to this product, while relevance asks
+whether that matches this product. A query can be clearly transactional and
+still irrelevant ("bottle water": buying bottled water, low relevance to a
+reusable bottle); genre and subgenre searches ("small town mystery") are
+browsing unless they name a specific title, author, edition or product;
+informational is only for information-seeking queries.
+
+The previous versions are archived verbatim in `prompts/history/` and
+`load_template(name, version)` loads them, so v0.7 recordings still replay
+exactly (`BatchedJudgmentProvider(prompt_version="judgment_batch-v2")`).
+The lock pins current and historical versions; cached answers for the old
+prompt miss automatically because the prompt version is part of the cache key.
+
+### Intent-risk signals (`semantic/escalation.py`)
+
+When an intent label contradicts the keyword's shape, the judgment goes to
+the strong tier for a second opinion (the label is never rewritten):
+`genre_browse` (transactional for a genre/subgenre search),
+`comparison_shopping` (transactional with "best", "vs", "review", ...),
+`generic_plural` (transactional for a short generic plural),
+`reordered_product_phrase` (not transactional for a seed's words with a
+different head noun, as "bottle water" vs "water bottle"), and
+`informational_without_question` (informational with no information-seeking
+word). A format word as head ("cozy mystery books") is not a genre search.
+
+Word lists compared with plural-folded head nouns are now folded the same
+way (`fold_plural` maps "mystery" to "mysterie"); this also fixes v0.8's
+setting and category lists for words ending in -y ("city", "story").
+
+### Routing comparison (offline, from v0.7 recorded answers)
+
+| Human-reviewed reference | v0.8 routing | intent-risk escalation | strong tier for all intent |
+|---|---|---|---|
+| book intent | 3/4 | **4/4** | 3/4 |
+| product intent | 4/5 | 4/5 | 4/5 |
+| relevance, entity, equivalence | 11/11, 3/3, 1/1; 12/12, 6/6, 2/2 | unchanged | unchanged |
+| strong-tier items (book + product) | 7 | 10 | 36 |
+| expected cost, judgment stages | $0.0541 | $0.0562 | $0.0703 |
+| worst case | $0.1566 | $0.1566 | $0.1898 |
+
+Intent-risk escalation is the default: it fixes "small town mystery" (the
+strong tier agrees with the reviewer) with no ranking, recommendation or
+backend change. Strong-for-all-intent also flips "cozy mystery books" to
+browsing (against the human decision) and reorders the product's
+recommendations. "bottle water" is flagged, but both recorded tiers answered
+informational under the v2 prompt, so only the v3 prompt can fix it; that
+needs new answers.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -1197,17 +1253,19 @@ verbatim seller feature; review words alone never create it.
 8. **v0.7**: first-party product context for judgments,
    risk-signal escalation, an evaluation-only strong-tier comparison, and a
    live re-measurement ($0.1317).
-9. **v0.8 (this release)**: relevance-risk escalation, a human review queue
+9. **v0.8**: relevance-risk escalation, a human review queue
    with decisions that supersede stale fixtures, offline routing-strategy
    comparison, and wording-independent review-theme feature support. No live
    spend.
-10. **v0.9 (recommended)**: record the human review decisions, then start market
-    data. Re-evaluate against the human reference (the reports pick decisions
-    up automatically); run one capped confirmatory live pass of strategy A only
-    if a decision changes the picture. Then the first read-only live
-    market-data adapter (autocomplete or SP-API Catalog) with the same
-    plan / cap / record / replay discipline.
-11. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+10. **v0.9 (this release)**: intent separated from relevance in the prompt,
+    intent-risk escalation, loadable historical prompt versions, and an
+    offline routing comparison against the human-reviewed reference.
+11. **v1.0 (recommended)**: one capped live confirmation of the v3 prompt
+    (7 planned calls, ~$0.058 expected, $0.19 worst case) to check that the
+    prompt change fixes "bottle water" and does not regress relevance; then
+    the first read-only live market-data adapter (autocomplete or SP-API
+    Catalog) with the same plan / cap / record / replay discipline.
+12. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.
