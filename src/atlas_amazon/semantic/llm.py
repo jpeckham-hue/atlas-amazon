@@ -1,8 +1,12 @@
 """LLM-backed semantic providers (live, replayed or scripted, depending on the transport).
 
-`LLMJudgmentProvider` implements the `JudgmentProvider` contract, and
-`LLMReviewThemeProvider` implements `ReviewThemeProvider`. Both use the
-same call path for every request:
+`LLMJudgmentProvider` implements the `JudgmentProvider` contract with **one
+call per judgment** (the v0.4b path, kept for comparison and for callers that
+want it); the v0.5 default is `batched.BatchedJudgmentProvider`, which
+batches, caches per judgment and escalates selectively. `LLMReviewThemeProvider`
+implements `ReviewThemeProvider` (one call per review set, on the strong tier
+by default, with an output budget sized to the number of reviews). Both
+providers here use the same call path for every request:
 
 1. **Cache lookup** by (kind, input hash, provider, model, prompt version),
    which must also match the prompt fingerprint.
@@ -50,9 +54,12 @@ from atlas_amazon.judgments.contract import (
 )
 from atlas_amazon.models import Evidence, EvidenceKind
 from atlas_amazon.reviews.themes import ReviewThemeError, review_theme_evidence
+from atlas_amazon.semantic.budgets import expected_themes_output, themes_output_budget
 from atlas_amazon.semantic.cache import CacheKey, SemanticCache
+from atlas_amazon.semantic.plan import PlannedCall, SemanticCallPlan
 from atlas_amazon.semantic.prompts import REVIEW_THEMES, PromptTemplate, load_template
 from atlas_amazon.semantic.records import ensure_no_secrets
+from atlas_amazon.semantic.tiers import FAST, LLMSettings, ModelTier, ModelTiers
 from atlas_amazon.semantic.transport import (
     DEFAULT_FALLBACK_BETA,
     LiveCallsDisabled,
@@ -61,20 +68,37 @@ from atlas_amazon.semantic.transport import (
     TransportResponse,
     request_hash,
 )
-from atlas_amazon.semantic.usage import BudgetExceeded, UsageLedger, UsageRecord
+from atlas_amazon.semantic.usage import (
+    BudgetExceeded,
+    UsageLedger,
+    UsageRecord,
+    estimate_tokens,
+)
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = FAST.model
 
 
-@dataclass(frozen=True, slots=True)
-class LLMSettings:
-    model: str = DEFAULT_MODEL
-    effort: str = "low"  # classification-style tasks; raise for harder judgments
-    refusal_fallbacks: bool = True  # server-side fallback on safety declines
-
-    def __post_init__(self) -> None:
-        if self.effort not in ("low", "medium", "high", "xhigh", "max"):
-            raise ValueError(f"unknown effort {self.effort!r}")
+def build_request(
+    settings: LLMSettings, template: PromptTemplate, input_data: Any, *, max_tokens: int
+) -> dict[str, Any]:
+    """A Messages API request for one template rendering. Never holds credentials."""
+    output_config: dict[str, Any] = {"format": {"type": "json_schema", "schema": template.schema}}
+    if settings.effort is not None:
+        output_config["effort"] = settings.effort
+    request: dict[str, Any] = {
+        "model": settings.model,
+        "max_tokens": max_tokens,
+        "system": template.system,
+        "messages": [{"role": "user", "content": template.render_user(thaw(input_data))}],
+        "output_config": output_config,
+    }
+    if settings.thinking is not None:
+        request["thinking"] = thaw(settings.thinking)
+    if settings.refusal_fallbacks:
+        request["betas"] = [DEFAULT_FALLBACK_BETA]
+        request["fallbacks"] = "default"
+    ensure_no_secrets(request, "semantic request")
+    return request
 
 
 class MalformedResponse(ValueError):
@@ -96,23 +120,14 @@ class _SemanticCaller:
     ledger: UsageLedger
     cache: SemanticCache | None
     failures: list[tuple[str, str]] = field(default_factory=list)  # (purpose:hash, reason)
+    tier: str | None = None  # recorded on usage records
 
-    def build_request(self, template: PromptTemplate, input_data: Any) -> dict[str, Any]:
-        request: dict[str, Any] = {
-            "model": self.settings.model,
-            "max_tokens": template.max_tokens,
-            "system": template.system,
-            "messages": [{"role": "user", "content": template.render_user(thaw(input_data))}],
-            "output_config": {
-                "effort": self.settings.effort,
-                "format": {"type": "json_schema", "schema": template.schema},
-            },
-        }
-        if self.settings.refusal_fallbacks:
-            request["betas"] = [DEFAULT_FALLBACK_BETA]
-            request["fallbacks"] = "default"
-        ensure_no_secrets(request, "semantic request")
-        return request
+    def build_request(
+        self, template: PromptTemplate, input_data: Any, max_tokens: int | None = None
+    ) -> dict[str, Any]:
+        if max_tokens is None:
+            max_tokens = template.max_tokens + self.settings.thinking_allowance
+        return build_request(self.settings, template, input_data, max_tokens=max_tokens)
 
     def call_evidence(
         self,
@@ -157,6 +172,7 @@ class _SemanticCaller:
         input_data: Any,
         purpose: str,
         run_id: str | None,
+        max_tokens: int | None = None,
     ) -> _Exchange | None:
         """Cache -> budget -> transport. Raises BudgetExceeded / LiveCallsDisabled to stop."""
         key = CacheKey(kind, input_hash, self.name, self.settings.model, template.version)
@@ -168,7 +184,7 @@ class _SemanticCaller:
                     TransportResponse.from_dict(found.entry["response"]),
                     "cache",
                 )
-        request = self.build_request(template, input_data)
+        request = self.build_request(template, input_data, max_tokens)
         if self.transport.is_live:
             try:
                 self.ledger.authorize(run_id=run_id, model=self.settings.model, request=request)
@@ -263,6 +279,7 @@ class _SemanticCaller:
             usage=usage,
             detail=detail,
             cost=self.ledger.cost_of(response.model, usage) if exchange.source == "live" else 0.0,
+            judgments=1 if outcome == "ok" and kind != REVIEW_THEMES else 0,
         )
         if outcome == "ok" and self.cache is not None and exchange.source != "cache":
             key = CacheKey(kind, input_hash, self.name, self.settings.model, template.version)
@@ -274,7 +291,18 @@ class _SemanticCaller:
         return value
 
     def _record(
-        self, run_id, model, purpose, template, source, outcome, *, usage=None, detail="", cost=None
+        self,
+        run_id,
+        model,
+        purpose,
+        template,
+        source,
+        outcome,
+        *,
+        usage=None,
+        detail="",
+        cost=None,
+        judgments=0,
     ) -> None:
         usage = usage or {}
         self.ledger.record(
@@ -294,6 +322,8 @@ class _SemanticCaller:
                 if source == "live"
                 else (0.0 if source == "cache" else None),
                 detail=detail,
+                judgments=judgments,
+                tier=self.tier,
             )
         )
 
@@ -414,6 +444,10 @@ class LLMJudgmentProvider:
         return out
 
 
+def _input_hash(data: Any) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json(data).encode("utf-8")).hexdigest()
+
+
 def review_input(reviews: Sequence[Evidence]) -> tuple[dict[str, Any], dict[str, Evidence]]:
     """Deterministic prompt input for a set of stored reviews, plus ref -> evidence."""
     ordered = sorted(
@@ -455,17 +489,79 @@ class LLMReviewThemeProvider:
         ledger: UsageLedger | None = None,
         cache: SemanticCache | None = None,
         name: str = "anthropic",
+        tier: ModelTier | str = ModelTier.STRONG,
     ) -> None:
         self.name = name
-        self.settings = settings or LLMSettings()
+        self.tier = ModelTier(tier)
+        self.settings = settings or ModelTiers()[self.tier]
         self.usage = ledger or UsageLedger()
         self.template = load_template(REVIEW_THEMES)
-        self._caller = _SemanticCaller(name, transport, self.settings, self.usage, cache)
+        self._caller = _SemanticCaller(
+            name, transport, self.settings, self.usage, cache, tier=self.tier.value
+        )
         self.dropped: list[str] = []  # human-readable notes on discarded refs/themes
+        self.plans: list[tuple[str | None, SemanticCallPlan]] = []
 
     @property
     def failures(self) -> list[tuple[str, str]]:
         return self._caller.failures
+
+    def max_tokens_for(self, review_count: int) -> int:
+        """Output budget for `review_count` reviews, never above the template cap."""
+        budget = themes_output_budget(review_count)
+        return min(self.template.max_tokens, budget) + self.settings.thinking_allowance
+
+    def plans_for(self, run_id: str | None) -> tuple[SemanticCallPlan, ...]:
+        return tuple(p for rid, p in self.plans if rid == run_id)
+
+    def plan(
+        self, reviews: Sequence[Evidence], *, marketplace: str = "", run_id: str | None = None
+    ) -> SemanticCallPlan:
+        """The single review-theme call `themes(reviews)` would make. Makes no call."""
+        data, refs = review_input(reviews)
+        if not refs:
+            return SemanticCallPlan(stage=REVIEW_THEMES, provider=self.name, requested=0)
+        input_hash = _input_hash(data)
+        key = CacheKey(
+            REVIEW_THEMES, input_hash, self.name, self.settings.model, self.template.version
+        )
+        if self._caller.cache is not None and (
+            self._caller.cache.lookup(key, self.template.fingerprint).entry is not None
+        ):
+            return SemanticCallPlan(
+                stage=REVIEW_THEMES,
+                provider=self.name,
+                requested=1,
+                cache_hits=1,
+                pricing_as_of=self.usage.pricing.as_of,
+            )
+        request = self._caller.build_request(self.template, data, self.max_tokens_for(len(refs)))
+        input_tokens = estimate_tokens(request)
+        expected_out = expected_themes_output(len(refs)) + self.settings.thinking_allowance // 4
+        price = self.usage.pricing.get(self.settings.model)
+        call = PlannedCall(
+            tier=self.tier.value,
+            model=self.settings.model,
+            items=1,
+            types={REVIEW_THEMES: 1},
+            max_tokens=request["max_tokens"],
+            input_tokens=input_tokens,
+            expected_output_tokens=expected_out,
+            expected_cost_usd=None if price is None else price.cost(input_tokens, expected_out),
+            worst_case_cost_usd=None
+            if price is None
+            else price.cost(input_tokens, request["max_tokens"]),
+            request_hash=request_hash(request),
+        )
+        return SemanticCallPlan(
+            stage=REVIEW_THEMES,
+            provider=self.name,
+            requested=1,
+            live=1,
+            batches=(call,),
+            pricing_as_of=self.usage.pricing.as_of,
+            notes=(f"{len(refs)} reviews in one call",),
+        )
 
     def themes(
         self, reviews: Sequence[Evidence], *, marketplace: str, run_id: str | None = None
@@ -473,7 +569,8 @@ class LLMReviewThemeProvider:
         data, refs = review_input(reviews)
         if not refs:
             return []
-        input_hash = "sha256:" + hashlib.sha256(canonical_json(data).encode("utf-8")).hexdigest()
+        self.plans.append((run_id, self.plan(reviews, marketplace=marketplace, run_id=run_id)))
+        input_hash = _input_hash(data)
         purpose = REVIEW_THEMES
         try:
             exchange = self._caller.exchange(
@@ -483,6 +580,7 @@ class LLMReviewThemeProvider:
                 input_data=data,
                 purpose=purpose,
                 run_id=run_id,
+                max_tokens=self.max_tokens_for(len(refs)),
             )
         except (BudgetExceeded, LiveCallsDisabled):
             return []

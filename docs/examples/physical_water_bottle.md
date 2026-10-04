@@ -1,11 +1,11 @@
 # Research report: Acme Insulated Water Bottle 32 oz
 
-- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.4.0b1)
+- Run: `run-bottle-001` at 2026-10-03T09:30:00+00:00 (atlas 0.5.0)
 - Recipe: `physical-product` 0.2.0 (amazon-base > physical-product), marketplace US
 - Seeds (seed_keywords attribute): water bottle, insulated water bottle
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=none
 - Keyword families: on
-- Evidence fingerprint: `9217353f3446b1b2`
+- Evidence fingerprint: `eb61771b7d64be7b`
 
 ## Research tasks
 
@@ -17,11 +17,11 @@
 | review_themes | competitor_reviews | executed | 11 / 0 | reviews for 4 ASINs; 3 review themes from 8 stored reviews |
 | category_attributes | competitor_catalog | already_done | 0 / 0 | satisfied by an earlier priority |
 | semantic | equivalence_judgments | executed | 2 / 0 | 2 requested, 2 valid model judgments |
-| semantic | keyword_judgments | executed | 19 / 0 | 57 requested, 19 valid model judgments, 38 unanswered (fallbacks apply) |
+| semantic | keyword_judgments | executed | 23 / 0 | 51 requested, 18 valid model judgments, 5 deterministic, 6 not needed (families that cannot be ranked), 28 unanswered (fallbacks apply) |
 
 ## Evidence summary
 
-55 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 21, keyword_metric 18, review_sample 8, review_theme 3.
+59 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 25, keyword_metric 18, review_sample 8, review_theme 3.
 
 - Missing, candidates without metrics: insulated water, wall vacuum, wall vacuum insulation
 - Missing, asins without reviews: B0ACME0001
@@ -245,7 +245,7 @@ Intent label (judgment): transactional
 
 ## Semantic judgments
 
-21 valid judgments: entity 2, equivalence 2, intent 5, relevance 12. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1).
+25 valid judgments: entity 6, equivalence 2, intent 5, relevance 12. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); rules:own_title_words (deterministic-v1).
 - Entity flag: `hydra water bottle` is a brand reference (Hydra); kept out of the backend and of listing recommendations. Judgment `ev_d0bda6f2e466ab73a4c2cb02`
 
 ## Review themes

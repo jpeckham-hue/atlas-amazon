@@ -98,6 +98,10 @@ class Recipe:
     coverage_weights: Mapping[str, float]
     research_priorities: tuple[str, ...]
     sources: Mapping[str, SourceRef]
+    # Known entity terms (entity label -> normalized terms) that deterministic
+    # code can recognize without a model, e.g. KDP program names (trademark).
+    known_entities: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    known_entities_source: SourceRef | None = None
 
     def enabled_rules(self) -> tuple[RuleSpec, ...]:
         return tuple(r for r in self.rules.values() if r.enabled)

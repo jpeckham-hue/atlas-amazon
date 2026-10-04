@@ -15,6 +15,14 @@ finished verdict. A hit is rebuilt into Evidence through exactly the same
 validation as a live response, so cached output can't bypass validation
 either. The file is append-only and checksummed (`records.ChecksummedJsonl`),
 and it holds no credentials (checked on write).
+
+**Batched judgments** (v0.5) are still cached per judgment, under the same
+key. The batch is never the cache unit: a later batch with different
+neighbours reuses each cached item. The entry's value names the item, its
+structured answer and the batch exchange it came from by request hash; the
+exchange itself (request and response) is stored once as an `exchange`
+record, so cached judgments can rebuild their `semantic_call` lineage
+exactly.
 """
 
 from __future__ import annotations
@@ -45,7 +53,11 @@ class SemanticCache:
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self._file = ChecksummedJsonl(path)
         self._entries: dict[CacheKey, list[dict[str, Any]]] = {}
+        self._exchanges: dict[str, dict[str, Any]] = {}
         for record in self._file.read():
+            if "exchange" in record:
+                self._exchanges.setdefault(record["exchange"], record["value"])
+                continue
             key = CacheKey(**record["key"])
             self._entries.setdefault(key, []).append(record)
 
@@ -64,6 +76,16 @@ class SemanticCache:
         record = {"key": asdict(key), "prompt_fingerprint": prompt_fingerprint, "value": value}
         self._file.append([record])
         self._entries.setdefault(key, []).append(record)
+
+    def put_exchange(self, request_hash: str, value: dict[str, Any]) -> None:
+        """Store a batch exchange ({"request", "response"}) once, by request hash."""
+        if request_hash in self._exchanges:
+            return
+        self._file.append([{"exchange": request_hash, "value": value}])
+        self._exchanges[request_hash] = value
+
+    def exchange(self, request_hash: str) -> dict[str, Any] | None:
+        return self._exchanges.get(request_hash)
 
     def __len__(self) -> int:
         return sum(len(v) for v in self._entries.values())

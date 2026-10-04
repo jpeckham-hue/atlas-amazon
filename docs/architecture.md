@@ -50,7 +50,7 @@ reproducible.
 
 ## File tree
 
-`✓` = exists (v0.4b), `·` = planned.
+`✓` = exists (v0.5), `·` = planned.
 
 ```
 atlas-amazon/
@@ -59,6 +59,7 @@ atlas-amazon/
 ├── README.md                      ✓
 ├── docs/
 │   ├── architecture.md            ✓ this file
+│   ├── benchmarks/                ✓ semantic cost benchmark (v0.4b vs v0.5), golden
 │   ├── examples/                  ✓ golden example research reports
 │   └── rule-sources.md            ✓ verified / unverified / heuristic rule inventory
 ├── src/atlas_amazon/
@@ -105,7 +106,15 @@ atlas-amazon/
 │   │   └── contract.py            ✓ JudgmentRequest, judgment Evidence, parse_judgment
 │   ├── semantic/
 │   │   ├── prompts/*.toml         ✓ versioned prompt templates + lock.json fingerprints
-│   │   ├── llm.py                 ✓ LLMJudgmentProvider, LLMReviewThemeProvider
+│   │   ├── batched.py             ✓ BatchedJudgmentProvider (v0.5 default): batch, escalate
+│   │   ├── batch.py               ✓ item IDs, batch prompt input, per-item response parsing
+│   │   ├── tiers.py               ✓ LLMSettings, fast / strong model tiers
+│   │   ├── escalation.py          ✓ EscalationPolicy: when the strong tier is asked
+│   │   ├── budgets.py             ✓ schema-derived output token budgets
+│   │   ├── plan.py                ✓ SemanticCallPlan / RunSemanticPlan, expected + worst cost
+│   │   ├── deterministic.py       ✓ RuleJudgmentProvider: questions plain code answers
+│   │   ├── benchmark.py           ✓ v0.4b vs v0.5 comparison from recordings
+│   │   ├── llm.py                 ✓ LLMJudgmentProvider (one call each), LLMReviewThemeProvider
 │   │   ├── transport.py           ✓ Anthropic (live) / Recording / Replay / Scripted
 │   │   ├── cache.py               ✓ persistent semantic cache
 │   │   ├── usage.py, pricing.py   ✓ usage ledger, hard limits, cost estimates
@@ -645,12 +654,13 @@ LLMJudgmentProvider / LLMReviewThemeProvider
 | `ReplayTransport(path)` | **never** | no | CI and local reproduction; an unrecorded request is a `replay_miss` (unanswered, never invented) |
 | `ScriptedTransport(fn)` | never | configurable | tests; `semantic/synthetic.py` scripts answers from fixture judgments for **synthetic** demo recordings |
 
-Default request:
-* model `claude-opus-5-5`, effort `low` (classification), thinking left
-  to the model (adaptive);
-* `output_config.format` JSON schema;
-* server-side refusal fallback (`betas: ["server-side-fallback-2026-07-01"]`,
-  `fallbacks: "default"`).
+Request settings come from `LLMSettings` (see *Model tiers* under v0.5):
+model, optional `effort`, optional `thinking`, optional server-side refusal
+fallback (`betas: ["server-side-fallback-2026-07-01"]`,
+`fallbacks: "default"`) and a thinking allowance added to `max_tokens` for
+models that always think. Every request uses `output_config.format` with a
+JSON schema. In v0.4b the default was Claude Opus 5.5 with 4,096 output
+tokens per judgment; v0.5 replaced both (below).
 
 The served model is recorded separately from the requested one. A
 `refusal` stop reason yields no judgment. Replaying a recorded run
@@ -659,7 +669,7 @@ content-addressed IDs and timestamps from the original response.
 
 ### Prompt versioning
 
-Each template has a `version` (e.g. `relevance-v1`) that is recorded on
+Each template has a `version` (e.g. `relevance-v2`) that is recorded on
 every judgment, cache key and `semantic_call`.
 `semantic/prompts/lock.json` pins each version's fingerprint, a sha256 of
 system + user + JSON schema + max_tokens. Editing a template without
@@ -678,10 +688,12 @@ validation as a live response, and only validated exchanges are cached.
 
 ### Cost and usage controls
 
-`UsageLedger` records one `UsageRecord` per request: provider, served
-model, purpose, prompt version, source (live / cache / replay / skipped),
-outcome (ok / malformed / refusal / replay_miss / error / budget), input
-and output tokens and estimated cost.
+`UsageLedger` records one `UsageRecord` per API call, cache hit or skipped
+call: provider, served model, purpose, prompt version, source (live / cache
+/ replay / skipped), outcome (ok / partial / malformed / refusal /
+replay_miss / error / budget), tier, items in the call, valid items,
+escalated items, item-level failures, input and output tokens and estimated
+cost.
 
 `SemanticBudget(max_live_calls=, max_cost_usd=)` is enforced per run,
 **before** each live call:
@@ -705,12 +717,14 @@ excluded) and a worst case.
 `HumanJudgmentProvider` records reviewer decisions as ordinary judgment
 Evidence: `provider = "human"`, `model = "human:<reviewer>"`,
 `prompt_version = "human-review-v1"`, with a rationale required.
-`ResearchProviders(human_judgments=...)` runs alongside the model provider.
-`resolve_judgments` pairs model and human judgments per (type, input hash),
-and **the human judgment wins**. Both records are stored.
+`ResearchProviders(human_judgments=...)` is asked **first** (v0.5): a request
+with a valid human answer is removed before any rule, cache lookup or model
+batch, so it costs nothing. `resolve_judgments` still pairs model and human
+judgments per (type, input hash) and **the human judgment wins** wherever
+both exist (for example evidence stored by an earlier version).
 
-The report's *Human overrides* table shows the model judgment, the human
-judgment and which one was used. Signal sources are `human` (mark **R**),
+The report's *Human overrides* table shows the human judgment, the model
+judgment if one exists ("not asked" otherwise) and which one was used. Signal sources are `human` (mark **R**),
 `judgment` (**J**, model), `heuristic` (**H**) or `evidence`.
 
 ### Evaluation
@@ -742,6 +756,156 @@ disagreement lists both values and both rationales.
   `*.semantic-cache.jsonl`, `*.recording.local.jsonl`). Commit only
   reviewed fixtures.
 
+## Semantic cost and call efficiency (v0.5)
+
+Same semantic capability, far fewer calls, a bounded worst case. The
+judgment contract, Evidence model, validation, replay and human overrides
+are unchanged; what changed is how requests reach a model.
+
+```
+JudgmentRequests of one stage (equivalence, or keyword relevance/intent/entity)
+   │
+   ├─ human reviewer decisions ──answered──▶ judgment Evidence (provider "human")
+   ├─ deterministic rules ───────answered──▶ judgment Evidence (provider "rules")
+   ├─ not needed (relevance/intent of a family that cannot be ranked) ──▶ skipped
+   ▼
+ BatchedJudgmentProvider
+   ├─ per-judgment cache (strong tier, then fast tier) ──hit──▶ rebuilt + re-validated
+   ├─ plan: fast batches, certain escalations, escalation reserve, costs
+   ├─ fast-tier batches (Claude Haiku 4.5), parsed by item ID, item by item
+   ├─ escalation policy ──flagged──▶ strong-tier batches (Claude Sonnet 5.5)
+   ▼
+ one judgment Evidence per request, each citing its batch's semantic_call
+```
+
+### Call routing (`research/run.py`)
+
+`ResearchRun._judge` routes each stage's requests cheapest first: human
+decisions, then `RuleJudgmentProvider`, then the model provider with what
+is left. Relevance and intent are requested only for families that can be
+ranked (all evidence signals present); entity is still requested for every
+family because it guards the backend and recommendations. Both behaviors
+can be turned off (`ResearchConfig(deterministic_judgments=False,
+skip_unrankable_judgments=False)`), which reproduces v0.4b's request set.
+
+### Deterministic judgments (`semantic/deterministic.py`)
+
+Only what plain code settles with certainty, as ordinary judgment Evidence
+(`provider "rules"`, `model "rules:<rule>"`, `prompt_version
+"deterministic-v1"`, confidence 1.0):
+
+* `recipe_known_entity`: the keyword contains a term the recipe lists under
+  `[entities]` (book: `kindle unlimited`, `kdp select` as `trademark`,
+  sourced to KDP's keyword guidance);
+* `own_title_words`: every content word (ignoring connecting words,
+  numbers and units) is in the seller's own product title, which the entity
+  prompt itself defines as not another company's entity.
+
+Already deterministic before v0.5 and never sent to a model: limits, byte
+counting, normalization and plural folding, duplicate detection,
+coverage, recipe prohibited terms, and the stopword-variant and
+attribute-rotation family links. Relevance and intent have no reliable
+rule, so they stay semantic (the term-overlap heuristic remains only an
+explicit fallback and an escalation signal).
+
+### Batching (`semantic/batch.py`, `semantic/batched.py`)
+
+* One template, `judgment_batch-v1`, covers all four judgment types; its
+  schema is a `results` array whose items are an `anyOf` of the per-type
+  shapes (one compiled grammar for every batch).
+* Item IDs come from the request (`rel-` + 10 hex of the input hash), never
+  from position. Items are sorted by subject, then ID, so a keyword's three
+  judgments share a batch and the same requests always render the same
+  request (stable replay hashes). The shared product context is hoisted
+  into `contexts`; each request's input hash still covers its full input.
+* Batches hold at most `BatchSettings.max_items` (default 40) items,
+  balanced in size, and are split further if their output budget would
+  exceed the template cap (8,192).
+* Parsing maps results by ID. Missing, duplicated (all copies rejected),
+  mistyped and malformed items fail alone; unknown IDs are ignored and
+  reported; order differences are reported but harmless. A refusal or an
+  unparseable response fails the whole batch. Item failures are counted
+  per call in the usage ledger.
+* Each valid item becomes its own judgment Evidence: its own input hash,
+  result, confidence, rationale, served model, prompt version and evidence
+  ID, with `call` metadata naming the batch's `semantic_call` evidence, the
+  item ID, batch size, tier and (if escalated) the escalation record.
+* The cache stays per judgment, keyed as before (type, input hash,
+  provider, model, prompt version). The batch exchange is stored once and
+  referenced by request hash, so a later batch with different neighbours
+  still reuses each cached item.
+
+### Model tiers (`semantic/tiers.py`)
+
+| Tier | Default | Request settings | Used for |
+|---|---|---|---|
+| fast | `claude-haiku-4-5` ($1 / $5 per MTok) | no `effort` (Haiku 4.5 rejects it), no thinking, no fallbacks | every batched judgment |
+| strong | `claude-sonnet-5-5` ($2 / $10) | `effort: low`, `thinking: {"type": "between_tools"}` (no extended thinking), no fallbacks (`between_tools` is Sonnet-5.5-only) | escalated items; review themes |
+| `OPUS_STRONG` (optional) | `claude-opus-5-5` ($4 / $20) | `effort: low`, refusal fallbacks, 2,048-token thinking allowance (Opus 5.5 always thinks) | when a stronger strong tier is wanted |
+
+`ModelTiers(fast=..., strong=...)` makes both configurable. Every judgment
+records the served model (`model`), the requested model and the tier.
+Whether Haiku 4.5 is good enough per judgment type is an empirical question
+for `evaluate_judgments` once live recordings exist; nothing here claims it.
+
+### Escalation (`semantic/escalation.py`)
+
+Only flagged items go to the strong tier, never everything:
+
+| Reason | Rule |
+|---|---|
+| `failed` | no usable fast answer (missing, duplicate, mistyped, malformed, refused or unparseable batch) |
+| `low_confidence` | confidence < 0.5 |
+| `ambiguous_equivalence` | equivalence confidence < 0.7 (family grouping would ignore it anyway) |
+| `heuristic_disagreement` | relevance differs from the term-overlap heuristic by ≥ 0.7 **and** confidence < 0.8 |
+
+At most `max_escalations` (default 12) items per stage escalate. The strong
+model gets the same batch prompt and never sees the fast answer. Its valid
+answer replaces the fast one; if it fails, a valid fast answer is kept.
+The strong judgment's `call.escalation` records the reason, the fast
+model, its answer, confidence and `semantic_call`. Transport errors and
+replay misses are not escalated.
+
+### Output budgets (`semantic/budgets.py`)
+
+v0.4b allowed 4,096 output tokens per judgment, and cost guards priced every
+call at that, so the worst case was ~38x the expected cost. Budgets are now
+derived from the response schema: per item, the longest valid item with an
+empty rationale (counted at a conservative 3 chars per token) plus 130
+rationale tokens (prompts ask for at most 25 words) plus 20 for an entity
+name; per batch, the sum plus 24. Individual templates use 256. Review
+themes get 24 + 8 themes x 180 + 8 tokens per review, capped at 4,096.
+`tests/test_semantic_budgets.py` checks that maximal valid answers fit.
+
+### Call plans (`semantic/plan.py`)
+
+`BatchedJudgmentProvider.plan(requests)` and
+`ResearchRun.plan_semantics()` show, before any live call: requests,
+human / rules / skipped / cache-hit counts, live items, each planned call
+(tier, model, items by type, `max_tokens`, estimated input tokens,
+expected and worst-case cost, exact request hash), certain escalations,
+the escalation reserve, and planned / expected / worst-case call counts.
+Execution follows the plan: the planned fast batches are exactly the
+requests sent. `plan_semantics()` plans the keyword stage on families
+before equivalence merges, an upper bound. Plans executed in a run are in
+`ResearchResult.semantic_plans` and the report's *Semantic call plan*.
+
+### Usage and cost accounting
+
+`SemanticUsageSummary` reports API calls (live and replayed), fast and
+strong calls, escalated items, model judgments, cache hits, human and
+deterministic answers, skipped requests, tokens, planned expected and
+worst-case cost, measured cost (API-reported tokens of live calls only)
+and cost per judgment. Without live calls nothing is reported as measured.
+
+### Benchmark (`semantic/benchmark.py`)
+
+`docs/benchmarks/semantic_cost_v0.5.md` compares v0.4b (the committed v0.4b
+recordings in `tests/fixtures/recordings/v04b/`) with v0.5 (the current
+synthetic recordings and plans), and checks that individual and batched
+execution give the same ranking, entity flags, proposals, recommendations
+and families. All figures are estimates from synthetic recordings.
+
 ## Roadmap
 
 1. **v0.1**: local domain core and tests.
@@ -760,19 +924,23 @@ disagreement lists both values and both rationales.
    relevance/intent with an explicit heuristic fallback; entity-flag
    exclusions; review-theme evidence and summaries with conditional,
    first-party-grounded listing opportunities.
-5. **v0.4b (this release)**: live semantic providers. LLM judgments and
+5. **v0.4b**: live semantic providers. LLM judgments and
    review themes through the official SDK (opt-in), versioned prompts,
    a persistent cache, record/replay for offline CI, a usage ledger with
    hard call and cost limits, human overrides, and per-type evaluation.
-6. **v0.5 (recommended)**: a real recorded baseline and review workflow:
-   * record one live run per scenario (with approval for the spend) and
-     publish real per-type agreement and measured cost;
-   * an override file workflow: export disagreements for a reviewer and
-     import their decisions as human judgments;
-   * request batching or Batch API support to cut semantic cost;
-   * then the first read-only live market-data adapter (autocomplete or
-     SP-API Catalog) with the same record/replay discipline.
-7. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
+6. **v0.5 (this release)**: semantic cost and call efficiency. Human and
+   rule answers first, unrankable families skipped, per-judgment cache,
+   batched fast-tier calls with ID-matched partial-failure handling,
+   selective strong-tier escalation, schema-derived output budgets, call
+   plans with expected and worst-case cost, and a v0.4b vs v0.5 benchmark.
+7. **v0.6 (recommended)**: a real recorded baseline. With approval for the
+   spend, record one live run per scenario, publish measured cost and
+   per-type agreement for the fast and strong tiers against the fixture
+   judgments, and tune the escalation thresholds and batch size from it.
+   Then an override-file workflow (export disagreements, import reviewer
+   decisions) and the first read-only live market-data adapter with the
+   same record/replay discipline.
+8. **Later**: a minimal CLI, read-only live adapters (autocomplete, SP-API
    Catalog, Product Type Definitions), LLM copy generation with
    deterministic re-validation, an approval-gated write path, more recipes,
    and a multi-marketplace rules matrix.

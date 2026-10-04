@@ -15,6 +15,7 @@ from atlas_amazon.jsonvalue import thaw
 from atlas_amazon.models import Finding
 from atlas_amazon.research.run import ResearchResult
 from atlas_amazon.reviews.themes import ThemeInsight
+from atlas_amazon.semantic.plan import PlannedCall, SemanticCallPlan, render_plan_markdown
 
 SOURCE_MARK = {"evidence": "", "judgment": " J", "human": " R", "heuristic": " H"}
 
@@ -68,6 +69,44 @@ def _task(t) -> dict[str, Any]:
         "new_records": t.new_records,
         "reused_records": t.reused_records,
         "note": t.note,
+    }
+
+
+def _call_dict(call: PlannedCall) -> dict[str, Any]:
+    return {
+        "tier": call.tier,
+        "model": call.model,
+        "items": call.items,
+        "types": dict(call.types),
+        "max_tokens": call.max_tokens,
+        "input_tokens": call.input_tokens,
+        "expected_output_tokens": call.expected_output_tokens,
+        "expected_cost_usd": call.expected_cost_usd,
+        "worst_case_cost_usd": call.worst_case_cost_usd,
+        "request_hash": call.request_hash,
+        "item_ids": list(call.item_ids),
+    }
+
+
+def _plan_dict(plan: SemanticCallPlan) -> dict[str, Any]:
+    return {
+        "stage": plan.stage,
+        "provider": plan.provider,
+        "requested": plan.requested,
+        "human": plan.human,
+        "deterministic": plan.deterministic,
+        "skipped": plan.skipped,
+        "cache_hits": plan.cache_hits,
+        "live": plan.live,
+        "planned_calls": plan.planned_calls,
+        "expected_calls": plan.expected_calls,
+        "worst_case_calls": plan.worst_case_calls,
+        "expected_cost_usd": plan.expected_cost_usd,
+        "worst_case_cost_usd": plan.worst_case_cost_usd,
+        "batches": [_call_dict(c) for c in plan.batches],
+        "escalations": [_call_dict(c) for c in plan.escalations],
+        "escalation_reserve": [_call_dict(c) for c in plan.escalation_reserve],
+        "notes": list(plan.notes),
     }
 
 
@@ -209,10 +248,29 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
             for r in result.judgment_resolutions
             if r.human is not None
         ],
+        "semantic_plans": [_plan_dict(p) for p in result.semantic_plans],
         "semantic_usage": None
         if result.semantic_usage is None
         else {
             "live_calls": result.semantic_usage.live_calls,
+            "replayed_calls": result.semantic_usage.replayed_calls,
+            "api_calls": result.semantic_usage.api_calls,
+            "fast_calls": result.semantic_usage.fast_calls,
+            "strong_calls": result.semantic_usage.strong_calls,
+            "escalations": result.semantic_usage.escalations,
+            "judgments_produced": result.semantic_usage.judgments_produced,
+            "model_judgments": result.semantic_usage.model_judgments,
+            "cache_hits": result.semantic_usage.cache_hits,
+            "human_overrides": result.semantic_usage.human_overrides,
+            "deterministic_judgments": result.semantic_usage.deterministic_judgments,
+            "skipped_judgments": result.semantic_usage.skipped_judgments,
+            "input_tokens": result.semantic_usage.input_tokens,
+            "output_tokens": result.semantic_usage.output_tokens,
+            "planned_calls": result.semantic_usage.planned_calls,
+            "expected_cost_usd": result.semantic_usage.expected_cost_usd,
+            "expected_cost_per_judgment_usd": result.semantic_usage.expected_cost_per_judgment,
+            "worst_case_cost_usd": result.semantic_usage.worst_case_cost_usd,
+            "measured_cost_per_judgment_usd": result.semantic_usage.measured_cost_per_judgment,
             "estimated_cost_usd": result.semantic_usage.estimated_cost_usd,
             "pricing_as_of": result.semantic_usage.pricing_as_of,
             "budget": {
@@ -233,6 +291,10 @@ def report_dict(result: ResearchResult) -> dict[str, Any]:
                     "input_tokens": g.input_tokens,
                     "output_tokens": g.output_tokens,
                     "estimated_cost_usd": g.estimated_cost_usd,
+                    "fast_calls": g.fast_calls,
+                    "strong_calls": g.strong_calls,
+                    "escalations": g.escalations,
+                    "judgments": g.judgments,
                 }
                 for g in result.semantic_usage.groups
             ],
@@ -574,7 +636,7 @@ def render_markdown(result: ResearchResult) -> str:
             w("|---|---|---|---|---|")
             for r in d["judgment_resolutions"]:
                 model = (
-                    "none"
+                    "not asked (answered by a human before any model call)"
                     if r["model"] is None
                     else f"{r['model']['result']} ({r['model']['model']}): "
                     f"{r['model']['rationale']} `{r['model']['evidence_id']}`"
@@ -593,23 +655,50 @@ def render_markdown(result: ResearchResult) -> str:
     if usage is not None:
         w("## Semantic usage")
         w("")
-        cost = usage["estimated_cost_usd"]
-        cost_text = "unknown (unpriced model)" if cost is None else f"${cost:.4f}"
+
+        def money(value):
+            return "unknown (unpriced model)" if value is None else f"${value:.4f}"
+
         limits = usage["budget"]
         max_calls = limits["max_live_calls"]
         max_cost = limits["max_cost_usd"]
         w(
-            f"{usage['live_calls']} live calls, estimated cost {cost_text} "
-            f"(pricing as of {usage['pricing_as_of']}). Limits: max live calls "
-            f"{max_calls if max_calls is not None else 'none'}, max cost "
+            f"{usage['api_calls']} API calls ({usage['live_calls']} live, "
+            f"{usage['replayed_calls']} replayed; {usage['fast_calls']} fast tier, "
+            f"{usage['strong_calls']} strong tier, {usage['escalations']} items escalated) "
+            f"supplied {usage['model_judgments']} model judgments. Answered without a "
+            f"model call: {usage['cache_hits']} cache hits, {usage['human_overrides']} human, "
+            f"{usage['deterministic_judgments']} deterministic; "
+            f"{usage['skipped_judgments']} not needed."
+        )
+        w("")
+        if usage["expected_cost_usd"] is not None:
+            per = usage["expected_cost_per_judgment_usd"]
+            w(
+                f"Planned: expected {money(usage['expected_cost_usd'])}"
+                + (f" ({money(per)} per judgment)" if per is not None else "")
+                + f", worst case {money(usage['worst_case_cost_usd'])} "
+                f"(estimates from the call plans, pricing as of {usage['pricing_as_of']})."
+            )
+        if usage["live_calls"]:
+            per = usage["measured_cost_per_judgment_usd"]
+            w(
+                f"Measured from API-reported tokens: {money(usage['estimated_cost_usd'])}"
+                + (f" ({money(per)} per judgment)" if per is not None else "")
+                + "."
+            )
+        else:
+            w("Measured cost: none (no live calls in this run).")
+        w(
+            f"Limits: max live calls {max_calls if max_calls is not None else 'none'}, max cost "
             f"{'$' + format(max_cost, 'g') if max_cost is not None else 'none'}."
         )
         w("")
         w(
-            "| Provider / model | Requests | Live | Replayed | Cache hits | Input tok | Output tok "
-            "| Est. cost | Failures |"
+            "| Provider / model | Records | Live | Replayed | Fast / strong calls | Judgments "
+            "| Cache hits | Input tok | Output tok | Est. cost | Failures |"
         )
-        w("|---|---|---|---|---|---|---|---|---|")
+        w("|---|---|---|---|---|---|---|---|---|---|---|")
         for g in usage["groups"]:
             gcost = (
                 "-"
@@ -621,11 +710,17 @@ def render_markdown(result: ResearchResult) -> str:
             fails = ", ".join(f"{k} {n}" for k, n in g["failures"].items()) or "none"
             w(
                 f"| {g['provider']} / {g['model']} | {g['requests']} | {g['live_calls']} | "
-                f"{g['replayed']} | {g['cache_hits']} | {g['input_tokens']} | "
-                f"{g['output_tokens']} | {gcost} | {fails} |"
+                f"{g['replayed']} | {g['fast_calls']} / {g['strong_calls']} | {g['judgments']} | "
+                f"{g['cache_hits']} | {g['input_tokens']} | {g['output_tokens']} | {gcost} | "
+                f"{fails} |"
             )
         for halt in usage["halts"]:
             w(f"- Limit reached, further live calls skipped: {halt}")
+        w("")
+    if result.semantic_plans:
+        w("### Semantic call plan")
+        w("")
+        w(render_plan_markdown(result.semantic_plans).rstrip())
         w("")
 
     themes = d["review_themes"]

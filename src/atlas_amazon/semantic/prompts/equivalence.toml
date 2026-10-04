@@ -1,6 +1,6 @@
 name = "equivalence"
-version = "equivalence-v1"
-max_tokens = 4096
+version = "equivalence-v2"
+max_tokens = 256
 system = """
 You decide whether two Amazon search phrases express the same shopping request.
 """
@@ -9,7 +9,7 @@ The input holds two search phrases made of the same words in a different order.
 Set "equivalent" to true only if a shopper typing either phrase wants the same
 kind of product. Word order that changes the product (for example "bottle water",
 a drink, versus "water bottle", a container) means they are not equivalent.
-Set "confidence" (0 to 1) and give a short "rationale".
+Set "confidence" (0 to 1) and give a "rationale" of at most 25 words.
 
 <input>
 {input_json}

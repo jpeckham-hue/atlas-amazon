@@ -4,7 +4,7 @@ Templates live in `semantic/prompts/<name>.toml` with fields:
 
     name           = "relevance"          # judgment type, or "review_themes"
     version        = "relevance-v1"       # recorded on every judgment and cache key
-    max_tokens     = 4096
+    max_tokens     = 256                # cap; batch requests compute their own
     system         = (multi-line TOML string)
     user           = (multi-line TOML string containing {input_json}, the only placeholder)
 
@@ -33,6 +33,7 @@ from atlas_amazon.judgments.contract import ENTITY_LABELS, INTENT_LABELS, Judgme
 from atlas_amazon.reviews.themes import Polarity
 
 REVIEW_THEMES = "review_themes"
+JUDGMENT_BATCH = "judgment_batch"
 PLACEHOLDER = "{input_json}"
 
 
@@ -47,28 +48,44 @@ def _obj(properties: dict[str, Any]) -> dict[str, Any]:
 
 _AUDIT = {
     "confidence": {"type": "number", "description": "0 to 1"},
-    "rationale": {"type": "string", "description": "One or two sentences an auditor can check."},
+    "rationale": {"type": "string", "description": "At most 25 words an auditor can check."},
 }
+
+# Result fields per judgment type (without the audit fields).
+_RESULT_FIELDS: dict[str, dict[str, Any]] = {
+    JudgmentType.RELEVANCE.value: {"score": {"type": "number"}},
+    JudgmentType.INTENT.value: {
+        "label": {"type": "string", "enum": list(INTENT_LABELS)},
+        "score": {"type": "number"},
+    },
+    JudgmentType.ENTITY.value: {
+        "label": {"type": "string", "enum": list(ENTITY_LABELS)},
+        "entity": {"type": "string", "description": "The entity named, or empty string"},
+    },
+    JudgmentType.EQUIVALENCE.value: {"equivalent": {"type": "boolean"}},
+}
+
+
+def _batch_item(kind: str) -> dict[str, Any]:
+    return _obj(
+        {
+            "id": {"type": "string"},
+            "type": {"type": "string", "enum": [kind]},
+            **_RESULT_FIELDS[kind],
+            **_AUDIT,
+        }
+    )
+
 
 # Structured-output schemas. Numeric ranges and enums are re-checked by the
 # judgment / review-theme validators, which every response must pass.
 OUTPUT_SCHEMAS: dict[str, dict[str, Any]] = {
-    JudgmentType.RELEVANCE.value: _obj({"score": {"type": "number"}, **_AUDIT}),
-    JudgmentType.INTENT.value: _obj(
-        {
-            "label": {"type": "string", "enum": list(INTENT_LABELS)},
-            "score": {"type": "number"},
-            **_AUDIT,
-        }
+    **{kind: _obj({**fields, **_AUDIT}) for kind, fields in _RESULT_FIELDS.items()},
+    # One schema for every batch, whatever types it holds, so the API compiles
+    # a single grammar. Items are told apart by "type" and matched by "id".
+    JUDGMENT_BATCH: _obj(
+        {"results": {"type": "array", "items": {"anyOf": [_batch_item(k) for k in _RESULT_FIELDS]}}}
     ),
-    JudgmentType.ENTITY.value: _obj(
-        {
-            "label": {"type": "string", "enum": list(ENTITY_LABELS)},
-            "entity": {"type": "string", "description": "The entity named, or empty string"},
-            **_AUDIT,
-        }
-    ),
-    JudgmentType.EQUIVALENCE.value: _obj({"equivalent": {"type": "boolean"}, **_AUDIT}),
     REVIEW_THEMES: _obj(
         {
             "themes": {

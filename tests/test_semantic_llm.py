@@ -24,6 +24,7 @@ from atlas_amazon.semantic import (
     find_secrets,
     load_template,
 )
+from atlas_amazon.semantic.tiers import OPUS_STRONG, STRONG
 from semantic_helpers import TS, constant, relevance, reply
 
 GOOD = {"score": 0.9, "confidence": 0.8, "rationale": "Names the product type and attribute."}
@@ -40,22 +41,45 @@ def judgments_in(evidence):
 
 
 class TestRequests:
-    def test_request_shape_structured_output_and_fallbacks(self):
+    def test_default_request_is_the_fast_tier(self):
         transport = constant(GOOD)
         judge(transport)
         [req] = transport.requests
         template = load_template("relevance")
-        assert req["model"] == "claude-opus-5-5"
-        assert req["max_tokens"] == template.max_tokens
+        assert req["model"] == "claude-haiku-4-5"
+        assert req["max_tokens"] == template.max_tokens == 256
         assert req["system"] == template.system
+        # Haiku 4.5 rejects `effort`; it is omitted, not defaulted.
         assert req["output_config"] == {
-            "effort": "low",
             "format": {"type": "json_schema", "schema": template.schema},
         }
-        assert req["betas"] == ["server-side-fallback-2026-07-01"]
-        assert req["fallbacks"] == "default"
+        assert "betas" not in req and "fallbacks" not in req
         assert "thinking" not in req and "temperature" not in req
         assert '"keyword": "insulated water bottle"' in req["messages"][0]["content"]
+
+    def test_opus_settings_add_effort_fallbacks_and_thinking_allowance(self):
+        transport = constant(GOOD)
+        judge(transport, settings=OPUS_STRONG)
+        [req] = transport.requests
+        template = load_template("relevance")
+        assert req["model"] == "claude-opus-5-5"
+        assert req["max_tokens"] == template.max_tokens + OPUS_STRONG.thinking_allowance
+        assert req["output_config"]["effort"] == "low"
+        assert req["betas"] == ["server-side-fallback-2026-07-01"]
+        assert req["fallbacks"] == "default"
+
+    def test_strong_tier_disables_extended_thinking_without_fallbacks(self):
+        transport = constant(GOOD)
+        judge(transport, settings=STRONG)
+        [req] = transport.requests
+        assert req["model"] == "claude-sonnet-5-5"
+        assert req["thinking"] == {"type": "between_tools"}
+        assert req["output_config"]["effort"] == "low"
+        assert "fallbacks" not in req
+        with pytest.raises(ValueError, match="between_tools"):
+            LLMSettings(
+                "claude-sonnet-5-5", thinking={"type": "between_tools"}, refusal_fallbacks=True
+            )
 
     def test_settings(self):
         transport = constant(GOOD)
@@ -81,12 +105,12 @@ class TestValidatedJudgments:
         j = parse_judgment(evidence)
         assert (j.score, j.confidence, j.rationale) == (0.9, 0.8, GOOD["rationale"])
         assert j.model == "claude-opus-5-5" and j.provider == "anthropic"
-        assert j.prompt_version == "relevance-v1"
+        assert j.prompt_version == "relevance-v2"
         assert j.input_hash == relevance().input_hash
         assert j.judged_at == datetime.fromisoformat(TS)
         assert j.call["call_evidence_id"] == call.id
         assert j.call["usage"]["input_tokens"] == 300
-        assert j.call["requested_model"] == "claude-opus-5-5"
+        assert j.call["requested_model"] == "claude-haiku-4-5"  # served != requested
         # The original request and response are preserved for audit and replay.
         assert call.payload["request"]["system"] == load_template("relevance").system
         assert json.loads(call.payload["response"]["text"]) == GOOD
@@ -94,7 +118,7 @@ class TestValidatedJudgments:
         assert not find_secrets(call.payload) and not find_secrets(evidence.payload)
 
     def test_fallback_served_model_is_recorded(self):
-        _, out = judge(constant(GOOD, model="claude-opus-4-8"))
+        _, out = judge(constant(GOOD, model="claude-opus-4-8"), settings=OPUS_STRONG)
         j = judgments_in(out)[0]
         assert j.model == "claude-opus-4-8"
         assert j.call["requested_model"] == "claude-opus-5-5"
@@ -231,7 +255,7 @@ class TestCacheAndReplay:
         from dataclasses import replace
 
         t = provider.templates["relevance"]
-        provider.templates["relevance"] = replace(t, version="relevance-v2")
+        provider.templates["relevance"] = replace(t, version="relevance-v3")
         provider.judge([relevance()], marketplace="US", run_id="r1")
         assert len(provider._caller.transport.requests) == 1
 
@@ -302,7 +326,7 @@ class TestLiveSafety:
         transport = AnthropicTransport(
             client=client, allow_live=True, clock=lambda: datetime(2026, 10, 3, tzinfo=UTC)
         )
-        provider, out = judge(transport)
+        provider, out = judge(transport, settings=OPUS_STRONG)
         assert len(client.beta.messages.calls) == 1  # fallbacks use the beta endpoint
         assert judgments_in(out)[0].call["usage"]["input_tokens"] == 321
         rec = provider.usage.records[0]
@@ -320,19 +344,21 @@ class TestLiveSafety:
         assert [r.outcome for r in ledger.records][-1] == "budget"
 
     def test_cost_limit_stops_before_overspending(self):
-        # Each call costs $0.018; the worst case for the next call is ~$0.085
-        # (full 4096-token output), so calls stop while there is still headroom.
-        transport = constant(GOOD, usage={"input_tokens": 2000, "output_tokens": 500})
-        ledger = UsageLedger(budget=SemanticBudget(max_cost_usd=0.2))
+        # Haiku: each call costs $0.0007; the worst case for the next call is
+        # ~$0.0015 (full 256-token output), so calls stop with headroom left.
+        transport = constant(
+            GOOD, model="claude-haiku-4-5", usage={"input_tokens": 200, "output_tokens": 100}
+        )
+        ledger = UsageLedger(budget=SemanticBudget(max_cost_usd=0.005))
         judge(transport, [relevance(f"kw {i}") for i in range(10)], ledger=ledger)
         spent = ledger.summary("r1").estimated_cost_usd
-        assert spent <= 0.2
+        assert spent <= 0.005
         assert 0 < len(transport.requests) < 10
         assert "max_cost_usd" in ledger.summary("r1").halts[0]
 
     def test_budget_below_one_worst_case_call_blocks_all_calls(self):
         transport = constant(GOOD)
-        ledger = UsageLedger(budget=SemanticBudget(max_cost_usd=0.05))
+        ledger = UsageLedger(budget=SemanticBudget(max_cost_usd=0.001))
         _, out = judge(transport, ledger=ledger)
         assert transport.requests == [] and out == []
 
@@ -404,7 +430,7 @@ class TestReviewThemes:
         assert parsed.count == 2  # recomputed from cited reviews, not the model's 99
         assert parsed.products == ("B0C0000001", "B0C0000002")
         assert parsed.extractor == "claude-opus-5-5"
-        assert parsed.extractor_version == "review_themes-v1"
+        assert parsed.extractor_version == "review_themes-v2"
         assert any("R99" in d for d in provider.dropped)
 
     def test_prompt_contains_only_reviews(self):

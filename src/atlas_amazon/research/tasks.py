@@ -55,6 +55,7 @@ class RunContext:
     store: EvidenceStore
     min_competitor_support: int
     review_limit: int | None
+    plan_only: bool = False  # collect research evidence, but make no semantic calls
     done: set[str] = field(default_factory=set)
 
     @property
@@ -208,6 +209,8 @@ def _competitor_reviews(ctx: RunContext, priority: str) -> TaskRecord:
     themer = ctx.providers.review_themes
     if themer is None:
         note += "; no review-theme provider configured"
+    elif ctx.plan_only:
+        note += "; review themes planned, not extracted"
     else:
         # Themes are extracted from the stored review evidence, which is
         # already persisted at this point.

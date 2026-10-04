@@ -1,11 +1,11 @@
 # Research report: The Quiet Harbor
 
-- Run: `run-book-001` at 2026-10-03T09:00:00+00:00 (atlas 0.4.0b1)
+- Run: `run-book-001` at 2026-10-03T09:00:00+00:00 (atlas 0.5.0)
 - Recipe: `book` 0.2.0 (amazon-base > book), marketplace US
 - Seeds (seed_keywords attribute): cozy mystery, small town mystery
 - Providers: catalog=fixture, keywords=fixture, suggestions=fixture, reviews=fixture, review_themes=fixture, judgments=fixture, human_judgments=human
 - Keyword families: on
-- Evidence fingerprint: `cc722bdbc1791d0a`
+- Evidence fingerprint: `a05b44aab1adb713`
 
 ## Research tasks
 
@@ -17,11 +17,11 @@
 | search_term_demand | search_demand | executed | 16 / 0 | suggestions for 2 seeds; metrics requested for 14 candidates |
 | series_and_format_signals | - | unsupported | 0 / 0 | no offline research task implements this priority yet |
 | semantic | equivalence_judgments | executed | 1 / 0 | 1 requested, 1 valid model judgments |
-| semantic | keyword_judgments | executed | 22 / 0 | 39 requested, 20 valid model judgments, 2 human, 19 unanswered (fallbacks apply) |
+| semantic | keyword_judgments | executed | 20 / 0 | 39 requested, 17 valid model judgments, 1 deterministic, 2 human, 19 unanswered (fallbacks apply) |
 
 ## Evidence summary
 
-53 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 23, keyword_metric 14, review_sample 7, review_theme 4.
+51 records. By kind: autocomplete_suggestion 2, catalog_item 3, judgment 21, keyword_metric 14, review_sample 7, review_theme 4.
 
 - Missing, asins without reviews: B0BOOK0001
 
@@ -198,16 +198,16 @@ Intent label (judgment): commercial_investigation
 
 ## Semantic judgments
 
-23 valid judgments: entity 3, equivalence 1, intent 4, relevance 15. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); human:editor (human-review-v1).
-- Entity flag: `cozy mystery kindle unlimited` is a trademark reference (Kindle Unlimited); kept out of the backend and of listing recommendations. Judgment `ev_6d7fd4abee216fb162eba157`
+21 valid judgments: entity 3, equivalence 1, intent 4, relevance 13. Models/prompts: fixture-judge-1 (entity-fixture-v1); fixture-judge-1 (equivalence-fixture-v1); fixture-judge-1 (intent-fixture-v1); fixture-judge-1 (relevance-fixture-v1); human:editor (human-review-v1); rules:recipe_known_entity (deterministic-v1).
+- Entity flag: `cozy mystery kindle unlimited` is a trademark reference (kindle unlimited); kept out of the backend and of listing recommendations. Judgment `ev_fcb44ce579eeb695db2d125d`
 - Entity flag: `agatha christie cozy mystery` is a author reference (Agatha Christie); kept out of the backend and of listing recommendations. Judgment `ev_37072f32c6b954b640bf8043`
 
 ### Human overrides
 
 | Type | Subject | Model judgment | Human judgment | Used |
 |---|---|---|---|---|
-| relevance | cozy mystery series | {'score': 0.5} (fixture-judge-1): Series status is unknown from the input. `ev_328805e5168645f27d41f3ac` | {'score': 0.9} (human:editor): The author confirmed this is book 1 of the Harbor Mysteries series. `ev_1739a2e95dcf064463f24835` | human `ev_1739a2e95dcf064463f24835` |
-| relevance | cozy mystery with cats | {'score': 0.3} (fixture-judge-1): The book has no cat characters. `ev_d7cb07b78901314f8f48081b` | {'score': 0.1} (human:editor): Checked against the manuscript: no cat characters appear. `ev_39b199cafab46395f62cc5c9` | human `ev_39b199cafab46395f62cc5c9` |
+| relevance | cozy mystery series | not asked (answered by a human before any model call) | {'score': 0.9} (human:editor): The author confirmed this is book 1 of the Harbor Mysteries series. `ev_1739a2e95dcf064463f24835` | human `ev_1739a2e95dcf064463f24835` |
+| relevance | cozy mystery with cats | not asked (answered by a human before any model call) | {'score': 0.1} (human:editor): Checked against the manuscript: no cat characters appear. `ev_39b199cafab46395f62cc5c9` | human `ev_39b199cafab46395f62cc5c9` |
 
 ## Review themes
 

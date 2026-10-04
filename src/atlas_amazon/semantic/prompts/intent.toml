@@ -1,6 +1,6 @@
 name = "intent"
-version = "intent-v1"
-max_tokens = 4096
+version = "intent-v2"
+max_tokens = 256
 system = """
 You classify the search intent behind Amazon shopper queries. You use only the
 keyword and the product context provided.
@@ -16,7 +16,7 @@ Classify the search intent of the keyword in the input.
 
 "score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
 ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
-Set "confidence" (0 to 1) and give a short "rationale".
+Set "confidence" (0 to 1) and give a "rationale" of at most 25 words.
 
 <input>
 {input_json}

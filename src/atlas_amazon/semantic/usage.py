@@ -1,9 +1,13 @@
 """Semantic usage accounting and hard limits.
 
-A `UsageLedger` records one `UsageRecord` per semantic request: whether it
-was a live call, a cache hit or a replay, plus tokens, estimated cost and
-outcome. A ledger may be shared by the judgment and review-theme providers,
-so the limits cover both.
+A `UsageLedger` records one `UsageRecord` per API call (live or replayed),
+per cache hit and per skipped call: tokens, estimated cost and outcome. A
+batched call covers several judgments (`items`), produces some valid ones
+(`judgments`) and may be an escalation to the strong tier (`escalated`).
+Item-level failures inside a call (missing, duplicate, malformed results)
+are counted in `item_failures`, so one bad item never hides the rest. A
+ledger may be shared by the judgment and review-theme providers, so the
+limits cover both.
 
 **Limits** (`SemanticBudget`, per run_id) are enforced *before* each live
 call:
@@ -71,10 +75,15 @@ class UsageRecord:
     cache_write_tokens: int | None = None
     estimated_cost_usd: float | None = None
     detail: str = ""
+    tier: str | None = None  # "fast" | "strong" (None: single-model provider)
+    items: int = 1  # judgments covered by this call (batch size)
+    judgments: int = 0  # valid item answers it produced (an escalated item counts per call)
+    escalated: int = 0  # items in this call that were escalated from the fast tier
+    item_failures: tuple[tuple[str, int], ...] = ()  # (item outcome, count)
 
     @property
-    def request_count(self) -> int:
-        return 1
+    def is_call(self) -> bool:
+        return self.source in ("live", "replay")
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,23 +99,92 @@ class UsageGroup:
     input_tokens: int
     output_tokens: int
     estimated_cost_usd: float | None  # None when any priced call had unknown pricing
+    fast_calls: int = 0
+    strong_calls: int = 0
+    escalations: int = 0
+    judgments: int = 0  # valid judgments from live or replayed calls
 
 
 @dataclass(frozen=True, slots=True)
 class SemanticUsageSummary:
+    """Usage for one run. The run fills in the fields after `pricing_as_of`.
+
+    `estimated_cost_usd` is *measured*: API-reported tokens of live calls times
+    list prices (0 without live calls). `expected_cost_usd`
+    and `worst_case_cost_usd` come from the call plans.
+    """
+
     groups: tuple[UsageGroup, ...]
     halts: tuple[str, ...]  # budget refusals, in order
     budget: SemanticBudget
     pricing_as_of: str
+    model_judgments: int = 0  # final judgments supplied by the model provider (cache included)
+    human_overrides: int = 0  # requests answered by a human, never sent to a model
+    deterministic_judgments: int = 0  # requests answered by recipe/keyword rules
+    skipped_judgments: int = 0  # requests not needed (e.g. families that cannot be ranked)
+    planned_calls: int | None = None
+    expected_cost_usd: float | None = None
+    worst_case_cost_usd: float | None = None
 
     @property
     def live_calls(self) -> int:
         return sum(g.live_calls for g in self.groups)
 
     @property
+    def replayed_calls(self) -> int:
+        return sum(g.replayed for g in self.groups)
+
+    @property
+    def api_calls(self) -> int:
+        """Live calls plus replayed ones (each replay stands for one recorded API call)."""
+        return self.live_calls + self.replayed_calls
+
+    @property
+    def cache_hits(self) -> int:
+        return sum(g.cache_hits for g in self.groups)
+
+    @property
+    def fast_calls(self) -> int:
+        return sum(g.fast_calls for g in self.groups)
+
+    @property
+    def strong_calls(self) -> int:
+        return sum(g.strong_calls for g in self.groups)
+
+    @property
+    def escalations(self) -> int:
+        return sum(g.escalations for g in self.groups)
+
+    @property
+    def judgments_produced(self) -> int:
+        return sum(g.judgments for g in self.groups)
+
+    @property
+    def input_tokens(self) -> int:
+        return sum(g.input_tokens for g in self.groups)
+
+    @property
+    def output_tokens(self) -> int:
+        return sum(g.output_tokens for g in self.groups)
+
+    @property
     def estimated_cost_usd(self) -> float | None:
         costs = [g.estimated_cost_usd for g in self.groups if g.live_calls]
         return None if any(c is None for c in costs) else sum(costs)  # type: ignore[arg-type]
+
+    @property
+    def measured_cost_per_judgment(self) -> float | None:
+        """Live cost per final model judgment; None without live calls (nothing measured)."""
+        cost = self.estimated_cost_usd
+        if not self.live_calls or cost is None or not self.model_judgments:
+            return None
+        return cost / self.model_judgments
+
+    @property
+    def expected_cost_per_judgment(self) -> float | None:
+        """Planned expected cost per final model judgment."""
+        cost = self.expected_cost_usd
+        return None if cost is None or not self.model_judgments else cost / self.model_judgments
 
 
 @dataclass
@@ -180,8 +258,10 @@ class UsageLedger:
             costs = [r.estimated_cost_usd for r in live]
             failures: dict[str, int] = {}
             for r in items:
-                if r.outcome != "ok":
+                if r.outcome not in ("ok", "partial"):
                     failures[r.outcome] = failures.get(r.outcome, 0) + 1
+                for status, n in r.item_failures:
+                    failures[f"item_{status}"] = failures.get(f"item_{status}", 0) + n
             groups.append(
                 UsageGroup(
                     provider=provider,
@@ -195,6 +275,10 @@ class UsageLedger:
                     input_tokens=sum(r.input_tokens or 0 for r in items if r.source != "cache"),
                     output_tokens=sum(r.output_tokens or 0 for r in items if r.source != "cache"),
                     estimated_cost_usd=None if any(c is None for c in costs) else sum(costs),
+                    fast_calls=sum(1 for r in items if r.is_call and r.tier == "fast"),
+                    strong_calls=sum(1 for r in items if r.is_call and r.tier == "strong"),
+                    escalations=sum(r.escalated for r in items if r.is_call),
+                    judgments=sum(r.judgments for r in items if r.is_call),
                 )
             )
         return SemanticUsageSummary(
@@ -222,20 +306,30 @@ class CostEstimate:
     )
 
 
-def estimate_recording_cost(path, model: str, pricing: PricingTable | None = None) -> CostEstimate:
+def estimate_recording_cost(
+    path, model: str | None = None, pricing: PricingTable | None = None
+) -> CostEstimate:
+    """Price a recording's requests offline.
+
+    With `model`, every request is priced as if sent to that model. With
+    None, each request is priced at the model it actually requested (a
+    tiered recording mixes fast and strong models).
+    """
     from atlas_amazon.semantic.records import ChecksummedJsonl
 
-    price = (pricing or PricingTable()).get(model)
-    if price is None:
-        raise ValueError(f"no price configured for {model!r}")
+    table = pricing or PricingTable()
     records = ChecksummedJsonl(path).read()
     inp = out = 0
     expected = worst = 0.0
     for record in records:
         request = record["request"]
+        name = model or request["model"]
+        price = table.get(name)
+        if price is None:
+            raise ValueError(f"no price configured for {name!r}")
         i = estimate_tokens(request)
         o = estimate_tokens(record["response"].get("text") or "")
         inp, out = inp + i, out + o
         expected += price.cost(i, o)
         worst += price.cost(i, int(request.get("max_tokens", 0)))
-    return CostEstimate(model, len(records), inp, out, expected, worst)
+    return CostEstimate(model or "as requested", len(records), inp, out, expected, worst)

@@ -1,0 +1,62 @@
+name = "judgment_batch"
+version = "judgment_batch-v1"
+# Hard cap. The actual max_tokens of a batch request is computed from the
+# items it contains (see semantic/budgets.py) and never exceeds this.
+max_tokens = 8192
+system = """
+You make independent semantic judgments about Amazon search keywords for a
+seller's own product listing. You judge each item separately, using only the
+information given for that item. You never invent product features.
+"""
+user = """
+The input holds "items" to judge and the product "contexts" they refer to.
+Each item has an "id", a "type", and either a "keyword" with a "context"
+reference, or two "phrases". Judge every item on its own; items do not
+influence each other.
+
+type "relevance": how relevant the keyword is to the product in its context.
+"score" (0 to 1):
+- 0.9-1.0: names this exact product type and its defining attributes.
+- 0.6-0.8: clearly the right product type, but generic or missing a key attribute.
+- 0.3-0.5: related, but a different variant, audience, or feature this product
+  is not shown to have.
+- 0.0-0.2: a different product, a competitor's brand, or a non-shopping query.
+Judge only from the product title and seed keywords. Treat any feature not
+stated there as unknown.
+
+type "intent": the search intent behind the keyword. "label" is one of:
+- transactional: ready to buy a specific kind of item.
+- commercial_investigation: comparing or browsing options.
+- informational: wants information, not a product.
+- navigational: looking for a specific brand, store, or listing.
+"score" (0 to 1) is the strength of purchase intent: 1.0 for a precise
+ready-to-buy query, around 0.5 for browsing, near 0 for informational queries.
+
+type "entity": does the keyword name an entity the seller may not use in their
+own listing or backend keywords? "label" is one of:
+- none: generic words only.
+- brand: a company or product brand.
+- author: a person's name used as an author reference.
+- trademark: a trademarked term or program name (for example a subscription
+  program) that is not a brand of a physical product.
+- product_line: a named product line or series of another company.
+- other: some other proper name.
+Put the entity text in "entity", or an empty string when the label is "none".
+Words from the product title in the context belong to the seller, not to
+another company.
+
+type "equivalence": the two phrases use the same words in a different order.
+"equivalent" is true only if a shopper typing either phrase wants the same kind
+of product. Word order that changes the product (for example "bottle water", a
+drink, versus "water bottle", a container) means they are not equivalent.
+
+For every item set "confidence" (0 to 1) to how sure you are and give a
+"rationale" of at most 25 words that a reviewer can check against the input.
+
+Return exactly one result per item in "results", copying the item's "id" and
+"type" exactly. Do not skip, merge, or add items. Result order does not matter.
+
+<input>
+{input_json}
+</input>
+"""

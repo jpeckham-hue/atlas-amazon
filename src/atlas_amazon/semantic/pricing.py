@@ -9,11 +9,15 @@ a configured cost limit then refuses to call it (fail safe).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
 PRICING_AS_OF = "2026-09-25"
+# The API may report a dated snapshot ID (for example "claude-haiku-4-5-20251001")
+# for a request made with the alias; both have the same price.
+_SNAPSHOT_SUFFIX = re.compile(r"-\d{8}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,4 +53,7 @@ class PricingTable:
     as_of: str = PRICING_AS_OF
 
     def get(self, model: str) -> ModelPrice | None:
-        return self.prices.get(model)
+        price = self.prices.get(model)
+        if price is None:
+            price = self.prices.get(_SNAPSHOT_SUFFIX.sub("", model))
+        return price

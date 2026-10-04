@@ -1,8 +1,13 @@
 """End-to-end replay of recorded semantic runs, human overrides and evaluation.
 
 The recordings in tests/fixtures/recordings/ are SYNTHETIC: produced by the
-live code path against `fixture_responder` (scripted, not a model), so CI can
-exercise recording -> replay -> evaluation offline. Regenerate with:
+live code path (batched, tiered: `BatchedJudgmentProvider`) against
+`fixture_responder` (scripted, not a model), so CI can exercise recording ->
+replay -> evaluation offline. `MODEL_DEVIATIONS` script one uncertain
+fast-tier answer per scenario, so the recordings include an escalation to
+the strong tier. tests/fixtures/recordings/v04b/ keeps the v0.4b
+(one call per judgment) recordings as the cost baseline; they are not
+replayed. Regenerate with:
 
     ATLAS_REGEN_RECORDINGS=1 pytest tests/test_semantic_replay.py
 """
@@ -12,11 +17,12 @@ import os
 
 import pytest
 
+from atlas_amazon.judgments import JudgmentRequest, JudgmentType
 from atlas_amazon.providers import FixtureData
 from atlas_amazon.report import render_markdown, report_dict, report_json
 from atlas_amazon.research import load_scenario
 from atlas_amazon.semantic import (
-    LLMJudgmentProvider,
+    BatchedJudgmentProvider,
     LLMReviewThemeProvider,
     RecordingTransport,
     ReplayTransport,
@@ -26,7 +32,9 @@ from atlas_amazon.semantic import (
     evaluate_judgments,
     render_evaluation_markdown,
 )
+from atlas_amazon.semantic.batch import item_id
 from atlas_amazon.semantic.synthetic import SYNTHETIC_MODEL, fixture_responder
+from atlas_amazon.semantic.tiers import FAST
 from atlas_amazon.semantic.usage import estimate_recording_cost
 from semantic_helpers import RECORDINGS, SCENARIOS
 
@@ -58,7 +66,37 @@ DEVIATIONS = {
         },
     },
 }
+# Scripted answers for one requested model only: an uncertain fast-tier answer
+# that the policy escalates; the strong tier then answers from the fixture.
+MODEL_DEVIATIONS = {
+    "book_cozy_mystery": {
+        FAST.model: {
+            ("entity", "harbor town"): {
+                "label": "other",
+                "entity": "Harbor Town",
+                "confidence": 0.4,
+                "rationale": "Possibly a place name used as a series title.",
+            }
+        }
+    },
+    "physical_water_bottle": {
+        FAST.model: {
+            ("equivalence", "kids water bottle || water bottles for kids"): {
+                "equivalent": True,
+                "confidence": 0.6,
+                "rationale": "Probably the same request.",
+            }
+        }
+    },
+}
 NAMES = sorted(DEVIATIONS)
+
+
+def providers(transport, ledger):
+    return {
+        "judgments": BatchedJudgmentProvider(transport, ledger=ledger),
+        "review_themes": LLMReviewThemeProvider(transport, ledger=ledger),
+    }
 
 
 def regenerate(name):
@@ -67,12 +105,12 @@ def regenerate(name):
     path = RECORDINGS / f"{name}.jsonl"
     if path.exists():
         path.unlink()
-    responder = fixture_responder(fixture, deviations=DEVIATIONS[name])
-    ledger = UsageLedger()
+    responder = fixture_responder(
+        fixture, deviations=DEVIATIONS[name], model_deviations=MODEL_DEVIATIONS[name]
+    )
     transport = RecordingTransport(ScriptedTransport(responder), path)
     load_scenario(SCENARIOS / f"{name}.json").with_providers(
-        judgments=LLMJudgmentProvider(transport, ledger=ledger),
-        review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
+        **providers(transport, UsageLedger())
     ).run()
 
 
@@ -82,10 +120,7 @@ def replay_scenario(name, ledger=None):
     transport = ReplayTransport(path)
     return (
         load_scenario(SCENARIOS / f"{name}.json")
-        .with_providers(
-            judgments=LLMJudgmentProvider(transport, ledger=ledger),
-            review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
-        )
+        .with_providers(**providers(transport, ledger))
         .run()
     )
 
@@ -113,7 +148,7 @@ def test_replay_is_reproducible_and_offline(name):
 @pytest.mark.parametrize("name", NAMES)
 def test_replayed_judgments_carry_call_lineage(name):
     result = replay_scenario(name)
-    model_judgments = [j for j in result.judgments if not j.is_human]
+    model_judgments = [j for j in result.judgments if j.provider == "anthropic"]
     assert model_judgments
     for j in model_judgments:
         assert j.model == SYNTHETIC_MODEL and j.provider == "anthropic"
@@ -123,18 +158,25 @@ def test_replayed_judgments_carry_call_lineage(name):
     assert themes is not None and themes.complaints  # LLM themes summarized deterministically
 
 
-def test_human_override_beats_replayed_model_judgment():
+def test_human_override_is_never_sent_to_the_model():
     result = replay_scenario("book_cozy_mystery")
     [series] = [
         r
         for r in result.judgment_resolutions
         if r.subject == "cozy mystery series" and r.type.value == "relevance"
     ]
-    assert series.overridden and series.used.is_human
-    assert series.model.model == SYNTHETIC_MODEL
-    assert {series.model.evidence_id, series.human.evidence_id} <= set(
-        result.evidence.ids_by_kind["judgment"]
-    )  # both records preserved
+    assert series.used.is_human and series.model is None  # removed before batching
+    assert series.human.evidence_id in result.evidence.ids_by_kind["judgment"]
+    batched = {i for plan in result.semantic_plans for c in plan.batches for i in c.item_ids}
+    request = JudgmentRequest.about_keyword(
+        JudgmentType.RELEVANCE,
+        "cozy mystery series",
+        product_title=result.metadata.product_title,
+        seeds=result.metadata.seeds,
+    )
+    assert batched and item_id(request) not in batched
+    keyword_plan = next(p for p in result.semantic_plans if p.stage == "keyword_judgments")
+    assert keyword_plan.human == 2  # both human decisions satisfied requests
     d = result.derivation("cozy mystery series")
     assert d.sources["relevance"].value == "human"
     assert series.human.evidence_id in d.signals.relevance.evidence_ids
@@ -190,18 +232,17 @@ def test_call_limit_during_a_full_run_degrades_to_heuristics():
 
     raw = json.loads((SCENARIOS / "physical_water_bottle.json").read_text(encoding="utf-8"))
     fixture = FixtureData.from_dict(raw["fixture"])
-    ledger = UsageLedger(budget=SemanticBudget(max_live_calls=5))
+    ledger = UsageLedger(budget=SemanticBudget(max_live_calls=3))
     transport = ScriptedTransport(responder(fixture))
     result = (
         load_scenario(SCENARIOS / "physical_water_bottle.json")
-        .with_providers(
-            judgments=LLMJudgmentProvider(transport, ledger=ledger),
-            review_themes=LLMReviewThemeProvider(transport, ledger=ledger),
-        )
+        .with_providers(**providers(transport, ledger))
         .run()
     )
-    assert len(transport.requests) == 5
-    assert result.semantic_usage.live_calls == 5
+    # themes, equivalence, then the first of two keyword batches; the second is refused.
+    # A keyword's judgments share a batch, so ranked keywords are judged or not as a whole.
+    assert len(transport.requests) == 3
+    assert result.semantic_usage.live_calls == 3
     assert result.semantic_usage.halts
     sources = {d.sources["relevance"].value for d in result.derivations}
     assert sources == {"judgment", "heuristic"}  # explicit fallback, still ranked

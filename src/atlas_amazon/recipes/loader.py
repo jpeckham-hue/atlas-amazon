@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import Any
 from urllib.parse import urlparse
 
+from atlas_amazon.keywords.normalize import normalize_text
 from atlas_amazon.models import Severity, SourceRef, SourceStatus
 from atlas_amazon.recipes.schema import (
     BACKEND_CHECKS,
@@ -38,7 +39,10 @@ from atlas_amazon.recipes.schema import (
 
 _RECIPE_ID = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _LEAF_ONLY = frozenset({"id", "extends", "version", "description"})
-_TOP_LEVEL = frozenset({"sources", "fields", "rules", "backend", "scoring", "research"})
+_TOP_LEVEL = frozenset({"sources", "fields", "rules", "backend", "scoring", "research", "entities"})
+# Labels a recipe may list known entity terms under (the judgment contract's
+# entity labels, minus "none").
+ENTITY_TERM_LABELS = ("brand", "author", "trademark", "product_line", "other")
 _SOURCE_KEYS = frozenset(
     {"title", "as_of", "status", "url", "marketplace", "scope", "note", "see_also"}
 )
@@ -406,6 +410,8 @@ def _build(leaf: Mapping[str, Any], merged: Mapping[str, Any], lineage: tuple[st
     if not any(w > 0 for w in coverage_weights.values()):
         raise _fail(rid, "scoring.coverage", "at least one weight must be positive")
 
+    entities, entities_source = _build_entities(rid, merged.get("entities"), sources)
+
     research = _table(rid, "research", merged.get("research", {}))
     _check_keys(rid, "research", research, frozenset({"priorities"}))
     priorities = _str_list(rid, "research.priorities", research.get("priorities", []))
@@ -422,4 +428,27 @@ def _build(leaf: Mapping[str, Any], merged: Mapping[str, Any], lineage: tuple[st
         coverage_weights=MappingProxyType(coverage_weights),
         research_priorities=priorities,
         sources=MappingProxyType(sources),
+        known_entities=MappingProxyType(entities),
+        known_entities_source=entities_source,
     )
+
+
+def _build_entities(
+    rid: str, raw: Any, sources: Mapping[str, SourceRef]
+) -> tuple[dict[str, tuple[str, ...]], SourceRef | None]:
+    if raw is None:
+        return {}, None
+    raw = _table(rid, "entities", raw)
+    _check_keys(rid, "entities", raw, frozenset({"source", *ENTITY_TERM_LABELS}))
+    source = _source_ref(rid, "entities.source", raw.get("source"), sources)
+    terms: dict[str, tuple[str, ...]] = {}
+    for label in ENTITY_TERM_LABELS:
+        if label in raw:
+            values = _str_list(rid, f"entities.{label}", raw[label])
+            normalized = tuple(normalize_text(v) for v in values)
+            if any(not v for v in normalized):
+                raise _fail(rid, f"entities.{label}", "terms must be non-empty")
+            terms[label] = normalized
+    if not terms:
+        raise _fail(rid, "entities", f"list terms under one of {list(ENTITY_TERM_LABELS)}")
+    return terms, source

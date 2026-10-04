@@ -158,3 +158,11 @@ priorities = [
   "search_term_demand",
   "series_and_format_signals",
 ]
+
+# --- Known entities (deterministic entity judgments) -------------------------
+# KDP's "Keywords to avoid" names Amazon program names. A keyword containing
+# one is answered as a trademark reference by plain code, without a model.
+
+[entities]
+source = "kdp-keywords"
+trademark = ["kindle unlimited", "kdp select"]

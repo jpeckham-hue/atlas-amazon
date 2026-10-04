@@ -9,34 +9,47 @@ came from, which marketplace it applies to and when it was observed. It
 records which dated rule a check enforces, and how each score breaks down
 into its parts.
 
-> Status: **v0.4b: live semantic providers.** `ResearchRun` answers "which
-> keywords matter, what am I missing, why, and what should change?" for a
-> book or a product listing, from fixture data, with every number traced to
-> evidence. New in v0.4a:
-> * keyword families group equivalent phrases, with an explained link for
->   each grouping;
-> * a `JudgmentProvider` contract (relevance, intent, entity, equivalence),
->   recorded as hashed, versioned Evidence; there is a fixture fake and no
->   LLM yet;
-> * review themes: praise, complaints and conditional listing opportunities.
+> Status: **v0.5: semantic cost and call efficiency.** `ResearchRun` answers
+> "which keywords matter, what am I missing, why, and what should change?"
+> for a book or a product listing, from fixture data, with every number
+> traced to evidence. Semantic judgments (relevance, intent, entity,
+> equivalence) and review themes can come from fixtures, from an LLM
+> (opt-in, official Anthropic SDK) or from a human reviewer, and every one
+> is recorded as hashed, versioned Evidence.
 >
-> Every relevance and intent value is marked as a model judgment, a human
-> override, or a heuristic.
+> New in v0.5: the same semantic capability with far fewer calls and a
+> bounded worst case. On the two example scenarios (synthetic recordings,
+> estimates only; see [the benchmark](docs/benchmarks/semantic_cost_v0.5.md)):
 >
-> New in v0.4b: LLM judgment and review-theme providers on the official
-> Anthropic SDK (optional, opt-in), using versioned prompts and structured
-> output. Also: a persistent cache, record/replay so CI stays offline,
-> hard call and cost limits, human overrides, and per-type evaluation.
-> Also in place:
-> * recipe loading, with rules sourced to official Amazon and KDP pages;
-> * keyword normalization, coverage and decomposable scoring;
-> * backend keyword packing and the listing audit;
-> * an append-only, checksummed evidence store;
-> * provider Protocols with fixture-backed fakes;
-> * evidence-linked proposals that are only valid after passing the audit.
+> | | v0.4b | v0.5 |
+> |---|---|---|
+> | API calls (book / product) | 41 / 60 | 4 / 5 (planned 3 / 4, worst case 5 / 6) |
+> | Expected cost (book / product) | $0.097 / $0.140 | $0.022 / $0.027 |
+> | Worst-case cost (book / product) | $3.67 / $5.26 | $0.083 / $0.096 |
 >
-> Everything is deterministic and offline. There are no live providers, no
-> LLM calls, no CLI and no publishing yet.
+> How:
+> * human decisions and deterministic rules (recipe entity lists, the
+>   seller's own title words) answer requests before any model call, and
+>   relevance/intent are skipped for families that cannot be ranked;
+> * the cache stays per judgment; what is left is **batched** (relevance,
+>   intent and entity together; equivalence in its own stage), matched by
+>   stable item IDs, with each item validated and recorded on its own;
+> * a cheap **fast tier** (Claude Haiku 4.5) answers; only uncertain,
+>   failed or disputed items **escalate** to the strong tier (Claude Sonnet
+>   5.5), with the reason recorded;
+> * output budgets are derived from the response schema (no more 4,096
+>   tokens per one-line answer), and cost guards use them;
+> * `ResearchRun.plan_semantics()` shows every planned call with expected
+>   and worst-case cost before anything runs.
+>
+> Also in place: recipes with rules sourced to official Amazon and KDP
+> pages, normalization, coverage and decomposable scoring, backend packing,
+> the listing audit, an append-only checksummed evidence store, keyword
+> families, review themes, record/replay (CI stays offline), hard call and
+> cost limits, human overrides and per-type evaluation.
+>
+> There are no live market-data providers, no CLI and no publishing yet.
+> LLM calls happen only when explicitly enabled.
 
 ## Principles
 
@@ -189,7 +202,7 @@ check = validate_proposal(proposal, recipe=recipe, base=listing, evidence=store)
 print("valid:", check.valid, [f.rule_id for f in check.blocking_findings])
 ```
 
-### Live semantic judgments (v0.4b, opt-in)
+### Live semantic judgments (opt-in)
 
 Live calls are **off by default** and never happen in tests. To run one:
 
@@ -202,30 +215,40 @@ atlas never reads or stores them. Enable live calls for the session with
 `ATLAS_ALLOW_LIVE_LLM=1`, then:
 
 ```py
-from atlas_amazon.research import load_scenario
+from atlas_amazon.evidence import InMemoryEvidenceStore
+from atlas_amazon.research import ResearchRun, load_scenario
 from atlas_amazon.semantic import (
     AnthropicTransport,
-    LLMJudgmentProvider,
+    BatchedJudgmentProvider,
     LLMReviewThemeProvider,
     RecordingTransport,
     SemanticBudget,
     SemanticCache,
     UsageLedger,
+    render_plan_markdown,
 )
 
-ledger = UsageLedger(budget=SemanticBudget(max_live_calls=80, max_cost_usd=2.00))
+ledger = UsageLedger(budget=SemanticBudget(max_live_calls=10, max_cost_usd=0.25))
 cache = SemanticCache(".atlas/semantic-cache.jsonl")
 live = RecordingTransport(AnthropicTransport(), ".atlas/book.recording.local.jsonl")
-result = (
-    load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json")
-    .with_providers(
-        judgments=LLMJudgmentProvider(live, ledger=ledger, cache=cache),
-        review_themes=LLMReviewThemeProvider(live, ledger=ledger, cache=cache),
-    )
-    .run()
+scenario = load_scenario("tests/fixtures/scenarios/book_cozy_mystery.json").with_providers(
+    judgments=BatchedJudgmentProvider(live, ledger=ledger, cache=cache),
+    review_themes=LLMReviewThemeProvider(live, ledger=ledger, cache=cache),
 )
+run = ResearchRun(
+    product=scenario.product, listing=scenario.listing, recipe_id=scenario.product.recipe_id,
+    run_id=scenario.run_id, providers=scenario.providers, store=InMemoryEvidenceStore(),
+    started_at=scenario.started_at,
+)
+print(render_plan_markdown(run.plan_semantics()))  # inspect before spending anything
+result = run.execute()
 print(result.semantic_usage)
 ```
+
+Model tiers, batch size and escalation are configurable:
+`BatchedJudgmentProvider(live, tiers=ModelTiers(fast=..., strong=...),
+batching=BatchSettings(max_items=40), escalation=EscalationPolicy(...))`.
+`LLMJudgmentProvider` (one call per judgment) is still available.
 
 Replay that recording later with `ReplayTransport(path)`; it makes no
 network calls. Compare model and reference judgments per type with
@@ -233,7 +256,9 @@ network calls. Compare model and reference judgments per type with
 `tests/fixtures/recordings/` are **synthetic** (scripted). See
 [docs/architecture.md](docs/architecture.md#live-semantic-providers-v04b)
 for caching, prompt versioning, cost controls, human overrides and
-evaluation.
+evaluation, and
+[Semantic cost and call efficiency](docs/architecture.md#semantic-cost-and-call-efficiency-v05)
+for batching, tiers, escalation, budgets and plans.
 
 ## Layout
 
@@ -249,8 +274,10 @@ src/atlas_amazon/
   planner/    Proposal + validate_proposal, backend plan, gap recommendations
   judgments/  JudgmentRequest, judgment Evidence contract, parse_judgment
   reviews/    review-theme Evidence, summaries, listing opportunities
-  semantic/   LLM providers, prompts, cache, record/replay, usage limits,
-              human overrides, evaluation
+  semantic/   LLM providers (batched + tiered, or one call each), escalation,
+              output budgets, call plans, deterministic rules, prompts,
+              cache, record/replay, usage limits, human overrides,
+              evaluation, benchmark
   research/   ResearchRun orchestration, priority tasks, scenarios
   report/     report dict / JSON / Markdown (formatting only)
 ```
